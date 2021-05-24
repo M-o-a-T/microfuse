@@ -1,0 +1,3 @@
+[submodule "microfuse/util"]
+	path = microfuse/util
+	url = git@github.com:smurfix/util-py
