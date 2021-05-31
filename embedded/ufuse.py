@@ -434,9 +434,14 @@ class UFuse(IOBase):
         del self.subs[msg["p"]]
         self.removed_sub(nr)
 
-    def publish(self, topic, msg, raw=False):
+    def publish(self, topic, msg, raw=False, exp=()):
         if self.client:
-            self.client.send("m", d=msg, p=topic, r=raw)
+            kw={}
+            if raw:
+                kw['r']=True
+            if exp:
+                kw['w'] = exp
+            self.client.send("m", d=msg, p=topic, **kw)
 
     def subscribe(self, topic, cb, raw=False):
         """Add a subscription to this topic.

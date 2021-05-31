@@ -69,7 +69,7 @@ watchdog.
 
 m
 -----
-Messaging. 'd' is the data, 'p' the topic number.
+MQTT Messaging. 'd' is the data, 'p' the topic number.
 
 The message may be an arbitrary msgpack-able data structure.
 
