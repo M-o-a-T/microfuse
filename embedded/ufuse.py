@@ -434,7 +434,11 @@ class UFuse(IOBase):
         del self.subs[msg["p"]]
         self.removed_sub(nr)
 
-    def subscribe(self, topic, cb):
+    def publish(self, topic, msg, raw=False):
+        if self.client:
+            self.client.send("m", d=msg, p=topic, r=raw)
+
+    def subscribe(self, topic, cb, raw=False):
         """Add a subscription to this topic.
         Returns the topic number.
         """
@@ -442,7 +446,7 @@ class UFuse(IOBase):
         self.sub_nr += 2
         self.subs[nr] = (cb, topic)
         if self.client:
-            self.client.send("ms",p=nr,d=topic)
+            self.client.send("ms",p=nr,d=topic,r=raw)
 
     def added_sub(self, nr, topic):
         """The server added a subscription to this topic.
@@ -551,7 +555,8 @@ class UFuse(IOBase):
         return -errno.EAGAIN
 
     def write(self, buf):
-        self.client.send(a="c",d=buf)
+        if self.client is not None:
+            self.client.send(a="c",d=buf)
 
     def ioctl(self, req,flags):
         if req == 3:  # poll

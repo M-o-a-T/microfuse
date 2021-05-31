@@ -199,10 +199,10 @@ class Multiplexer:
 
     @asynccontextmanager
     async def _mqtt(self):
-        if not self.mqtt_cfg:
+        if self.mqtt_cfg is None:
             yield self
             return
-        async with open_mqttclient(config=self.mqtt_cfg) as mqtt:
+        async with open_mqttclient(config=dict(uri=self.mqtt_cfg)) as mqtt:
             try:
                 self.mqtt = mqtt
                 yield self
@@ -222,32 +222,44 @@ class Multiplexer:
             if nr is None:
                 self.next_sub += 2
                 nr = self.next_sub
-            await self.send(a="ms",p=nr,d=topic)
+                await self.send(a="ms",p=nr,d=topic)
             task_status.started(nr)
             try:
                 with anyio.CancelScope() as cs:
                     self.subs[nr] = (topic,codec,cs)
                     async for msg in sub:
-                        if spl:
-                            # wildcard resolution
-                            w = []
-                            rt = msg.topic
-                            for k in topic:
-                                if k == "+":
-                                    w.append(rt[0])
-                                elif k == "#":
-                                    w.extend(rt)
-                                    break
-                                rt = rt[1:]
-                            await self.send(a="m",p=nr,d=msg.data,w=w)
-                        else:
-                            await self.send(a="m",p=nr,d=msg.data)
+                        try:
+                            if spl:
+                                # wildcard resolution
+                                w = []
+                                rt = msg.topic.split("/")
+                                for k in topic:
+                                    if k == "+":
+                                        w.append(rt[0])
+                                    elif k == "#":
+                                        w.extend(rt)
+                                        break
+                                    elif k != rt[0]:
+                                        logger.warning("Strange topic: %r vs %r", msg.topic,"/".join(topic))
+                                        continue
+                                    rt = rt[1:]
+                                await self.send(a="m",p=nr,d=msg.data,w=w)
+                            else:
+                                await self.send(a="m",p=nr,d=msg.data)
+                        except Exception:
+                            logger.exception("Received from %r", msg)
+
+            except Exception:
+                await self.send(a="mu",p=nr)
             finally:
-                del self.subs[nr]
+                try:
+                    del self.subs[nr]
+                except KeyError:
+                    pass
 
 
     async def run(self,*,task_status=None):
-        async with anyio.create_task_group() as tg, self._mqtt():
+        async with self._mqtt(), anyio.create_task_group() as tg:
             self._tg = tg
             self._cancel = tg.cancel_scope
 
