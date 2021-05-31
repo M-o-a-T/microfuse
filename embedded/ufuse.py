@@ -438,23 +438,30 @@ class UFuse(IOBase):
                 kw['w'] = exp
             self.client.send("m", d=msg, p=topic, **kw)
 
-    def subscribe(self, topic, cb, raw=False):
-        """Add a subscription to this topic.
-        Returns the topic number.
-        """
-        nr = self.sub_nr
-        self.sub_nr += 2
+    def subscribe(self, topic, cb, nr=None, raw=False):
+        # Add a subscription to this topic.
+        # Returns the topic number.
+        if nr is None:
+            nr = self.sub_nr
+            self.sub_nr += 2
         self.subs[nr] = (cb, topic)
         if self.client:
             self.client.send("ms",p=nr,d=topic,r=raw)
+        return nr
+
+    def unsubscribe(self, nr):
+        del self.subs[nr]
+        if self.client:
+            self.client.send("mu",p=nr)
 
     def added_sub(self, nr, topic):
-        """The server added a subscription to this topic.
-        Returns the callback to use for messages."""
-        raise ServerError("can't handle this")
+        # The server added us to a subscription to this topic.
+        # Must return the callback to use for messages.
+        raise ServerError("no")
 
     def removed_sub(self, nr):
-        raise ServerError("can't handle this")
+        # The server dropped us from this subscription.
+        pass
 
 
     # start and stop
