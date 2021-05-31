@@ -1,0 +1,105 @@
+#!/usr/bin/python3
+# EASY-INSTALL-ENTRY-SCRIPT: 'pyserial==3.5b0','console_scripts','pyserial-miniterm'
+import re
+import os
+import sys
+import click
+
+from microfuse.term import Miniterm, ask_for_port, key_description
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+# default args can be used to override when calling main() from an other script
+# e.g to create a miniterm-my-device.py
+@click.command()
+@click.option("--ask", is_flag=True, help="Ask for a port when opening fails")
+@click.option("-e", "--echo", is_flag=True, help="enable local echo (default off)")
+@click.option("--encoding", type=str, help="set the encoding for the serial port (e.g. hexlify, Latin1, UTF-8), default: UTF-8)", default="utf-8")
+@click.option("-f", "--filter", type=str, multiple=True, help="add text transformation")
+@click.option("--eol", type=click.Choice(['CR', 'LF', 'CRLF'], case_sensitive=False), help="end of line mode", default="CRLF")
+@click.option("--raw", is_flag=True, help="Do no apply any encodings/transformations")
+@click.option("--exit-char", type=int, help="Unicode of special character that is used to exit the terminal, default 0x1D, ^]", default=0x1d)
+@click.option("--menu-char", type=int, help="Unicode of special character that is used to control the terminal, default 0x14, ^T", default=0x14)
+@click.option("-q", "--quiet", is_flag=True, help="suppress non-error messages")
+@click.option("--develop", is_flag=True, help="show Python traceback on error")
+@click.option("-p","--port", type=click.Path(), help="Socket to connect to (may be in runtime dir)")
+def main(port, ask, echo, encoding, filter, eol, raw, exit_char, menu_char, quiet, develop):
+    """Command line tool, entry point"""
+
+    if menu_char == exit_char:
+        raise click.UsageError('--exit-char can not be the same as --menu-char')
+
+    if filter:
+        if "help" in filter:
+            print('Available filters:', file=sys.stderr)
+            print('\n'.join(
+                '{:<10} = {.__doc__}'.format(k, v)
+                for k, v in sorted(TRANSFORMATIONS.items())), file=sys.stderr)
+            sys.exit(1)
+        filters = filter
+    else:
+        filters = ['default']
+
+    sockname = None
+    while sockname is None:
+        # no port given on command line -> ask user now
+        if port is None or port == '-':
+            try:
+                port = ask_for_port()
+            except KeyboardInterrupt:
+                print("", file=sys.stderr)
+                raise click.UsageError('user aborted and port is not given')
+            else:
+                if not port:
+                    raise click.UsageError('port is not given')
+        try:
+            try:
+                s = os.stat(port)
+            except FileNotFoundError:
+                p = os.path.join(os.environ["XDG_RUNTIME_DIR"], port)
+                if p == port:
+                    raise
+                s = os.stat(port)
+                port = p
+
+        except FileNotFoundError:
+            print(f"{port}: not found", file=sys.stderr)
+            port = None
+            continue
+
+        else:
+            sockname = port
+            break
+
+    term = Miniterm(sockname, echo=echo, eol=eol.lower(), filters=filters)
+    term.exit_character = chr(exit_char)
+    term.menu_character = chr(menu_char)
+    term.raw = raw
+    term.set_rx_encoding(encoding)
+    term.set_tx_encoding(encoding)
+
+    if not quiet:
+        print('--- Terminal on {p.socketname} ---'.format(p=term), file=sys.stderr)
+        print('--- Quit: {} | Menu: {} | Help: {} followed by {} ---'.format(
+            key_description(term.exit_character),
+            key_description(term.menu_character),
+            key_description(term.menu_character),
+            key_description('\x08')), file=sys.stderr)
+
+    try:
+        term.start()
+        try:
+            term.join(True)
+        except KeyboardInterrupt:
+            pass
+        if not quiet:
+            print('\n--- exit ---\n',file=sys.stderr)
+    except Exception as exc:
+        if develop:
+            raise
+        print(f"\nError: {exc !r}", file=sys.stderr)
+    finally:
+        term.close()
+
+# - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+if __name__ == '__main__':
+    main()

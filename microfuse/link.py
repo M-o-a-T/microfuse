@@ -110,15 +110,18 @@ class Link(CtxObj):
 
 
     @asynccontextmanager
-    async def mount(self, path, debug=False, *, task_status=None):
+    async def mount(self, path, blocksize=None, debug=False, *, task_status=None):
         import pyfuse3
         from .fuse import Operations
         operations = Operations(self)
+        if blocksize:
+            operations.max_read = blocksize
+            operations.max_write = blocksize
 
         logger.debug('Mounting...')
         fuse_options = set(pyfuse3.default_options)
         fuse_options.add('fsname=microfs')
-        fuse_options.add('max_read=256')
+        fuse_options.add(f'max_read={operations.max_read}')
         if debug:
             fuse_options.add('debug')
         pyfuse3.init(operations, str(path), fuse_options)

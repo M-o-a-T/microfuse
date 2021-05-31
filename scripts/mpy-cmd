@@ -39,10 +39,13 @@ async def ping(obj, timeout, message):
 
 
 @main.command()
+@click.option("-b", "--blocksize", type=int, help="Max read/write message size", default=256)
 @click.argument("path", type=click.Path(file_okay=False, dir_okay=True), nargs=1)
 @click.pass_obj
-async def mount(obj, path):
-    await obj.link.mount(path)
+async def mount(obj, path, blocksize):
+    async with obj.link.mount(path, blocksize=blocksize):
+        while True:
+            await anyio.sleep(99999)
 
 
 if __name__ == "__main__":

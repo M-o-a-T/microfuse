@@ -1,7 +1,7 @@
 # FUSE operations
 
 import pyfuse3
-from pyfuse3 import FUSEError, EntryAttributes, FileInfo
+from pyfuse3 import FUSEError, EntryAttributes, FileInfo, RENAME_EXCHANGE, RENAME_NOREPLACE
 import errno
 import os
 import stat
@@ -17,6 +17,7 @@ class Operations(pyfuse3.Operations):
     enable_acl = False
 
     max_read = 256
+    max_write = 256
 
     def __init__(self, link):
         super().__init__()
@@ -68,10 +69,12 @@ class Operations(pyfuse3.Operations):
             del self._path_inode_map[p]
 
     def raise_error(self, err, inode=None):
-        if err.s == "nf":
+        if err.s == "fn":
             if inode is not None:
                 self.i_del(inode)
             raise FUSEError(errno.ENOENT)
+        if err.s == "fx":
+            raise FUSEError(errno.EEXIST)
         raise FUSEError(errno.EIO)
 
     async def lookup(self, parent_inode, name, ctx):
@@ -243,9 +246,11 @@ class Operations(pyfuse3.Operations):
         (Successful) execution of this handler increases the lookup count for
         the returned inode by one.
         '''
-
-        logger.warning("NotImpl: mkdir: p=%r n=%r m=%r ctx=%r", parent_inode, name, mode, ctx)
-        raise FUSEError(errno.ENOSYS)
+        p = self.i_path(parent_inode) / name.decode()
+        try:
+            await self._link.send("fD",str(p))
+        except ServerError as err:
+            self.raise_error(err)
 
     async def unlink(self, parent_inode, name, ctx):
         '''Remove a (possibly special) file
@@ -349,8 +354,23 @@ class Operations(pyfuse3.Operations):
         directory entries associated with *inode_deref* either).
         '''
 
-        logger.warning("NotImpl: rename: p=%r n=%r d=%r n=%r f=%r ctx=%r", parent_inode_old, name_old, parent_inode_new, name_new, flags, ctx)
-        raise FUSEError(errno.ENOSYS)
+        try:
+            p = self.i_path(parent_inode_old) / name_old.decode()
+            q = self.i_path(parent_inode_new) / name_new.decode()
+
+            if flags == 0:
+                await self._link.send("fm",s=str(p),d=str(q))
+            elif flags == RENAME_EXCHANGE:
+                r = "_xfn_%d" % os.getpid() # in the root
+                await self._link.send("fm",s=str(p),d=str(q),x=str(r))
+            elif flags == RENAME_NOREPLACE:
+                await self._link.send("fm",s=str(p),d=str(q),n=True)
+            else:
+                logger.warning("NotImpl: rename: p=%r n=%r d=%r n=%r f=%r ctx=%r", parent_inode_old, name_old, parent_inode_new, name_new, flags, ctx)
+                raise FUSEError(errno.ENOSYS)
+        except ServerError as err:
+            self.raise_error(err)
+
 
     async def link(self, inode, new_parent_inode, new_name, ctx):
         '''Create directory entry *name* in *parent_inode* refering to *inode*.
@@ -390,7 +410,10 @@ class Operations(pyfuse3.Operations):
         else:
             m = "r"
 
-        fd = await self._link.send("fo",str(self.i_path(inode)), fm=m)
+        try:
+            fd = await self._link.send("fo",str(self.i_path(inode)), fm=m)
+        except ServerError as err:
+            self.raise_error(err)
         self.f_open(fd,inode)
         fh.fh = fd
         return fh
@@ -436,15 +459,15 @@ class Operations(pyfuse3.Operations):
         ``len(buf)``).
         '''
 
-        if len(buf) <= self.max_read:
+        if len(buf) <= self.max_write:
             return await self._link.send("fw",fh,fo=off,fd=buf)
         
         # OWCH. Break that up.
         sent = 0
         while sent < len(buf):
-            sn = await self._link.send("fw",fh,fo=off+sent,fd=buf[sent:sent+self.max_read])
+            sn = await self._link.send("fw",fh,fo=off+sent,fd=buf[sent:sent+self.max_write])
             sent += sn
-            if sn < self.max_read:
+            if sn < self.max_write:
                 break
         return sent
 
@@ -551,7 +574,7 @@ class Operations(pyfuse3.Operations):
             try:
                 attr = await self.getattr(inode, ctx)
             except ServerError as err:
-                if err.s == "nf":
+                if err.s == "fn":
                     self.i_del(inode)
                     continue
                 raise

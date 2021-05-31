@@ -81,7 +81,7 @@ def tempdir(persist):
 async def mplex(tmp, *, task_status):
     host="127.0.0.1"
     # port=40000+(os.getpid()%10000)
-    port=8267
+    port=18266
     console=tmp/"console"
     stream=tmp/"link"
     mplex = Multiplexer(host,port, console, stream)
