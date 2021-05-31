@@ -39,7 +39,7 @@ class ChatObj:
 
     def close(self):
         for e in self.ids.values():
-            e[0].set_error(CancelledError)
+            e[0].set_error(CancelledError())
 
     async def send(self, **kw):
         """called by the server with an incoming reply"""
