@@ -50,8 +50,6 @@ class ServerError(Exception):
     def __repr__(self):
         return "ServerError(%r)" % (self.s,)
 
-_S = None
-
 def setup_conn(port, accept_handler):
     listen_s = socket.socket()
     listen_s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
@@ -181,11 +179,6 @@ class UFuse(IOBase):
 
     def __init__(self, port=18266):
         super().__init__()
-
-        global _S
-        if _S is not None:
-            raise RuntimeError("Only one UFuse handler may run")
-        _S = self
 
         self.port = port
         self.clients = set()
