@@ -511,8 +511,6 @@ class Operations(pyfuse3.Operations):
         *fh* will by an integer filehandle returned by a prior `open` or
         `create` call.
         '''
-        import pdb;pdb.set_trace()
-
         pass
 
     async def opendir(self, inode, ctx):
