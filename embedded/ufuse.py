@@ -10,6 +10,11 @@ import uselect
 import uos
 import errno
 from uio import IOBase
+
+try:
+    from micropython import schedule
+except ImportError:
+    schedule = lambda x,y:x(y)
 try:
     from machine import WDT
 except ImportError:
@@ -98,12 +103,17 @@ class UFuseClient:
 
     def start(self):
         try:
-            self.sock.setsockopt(socket.SOL_SOCKET, 20, self._read)
+            self.sock.setsockopt(socket.SOL_SOCKET, 20, self._sched_read)
         except TypeError:
             self.poll = uselect.poll()
             self.poll.register(sock,uselect.POLLIN)
             print("No client auto read.")
         self.send(a="h")
+
+    def _sched_read(self, _):
+        # defer to a scheduled task so that the reader isn't itself
+        # interrupted when "dupterm_notify" processes a keyboard interrupt
+        schedule(self._read, _)
 
     def _read(self, _):
         if self.poll is not None:
