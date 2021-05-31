@@ -195,18 +195,18 @@ class UFuse(IOBase):
     # cmd_c*: REPL/console calls, see below
 
     def cmd_e(self, msg):
-        """Error Reply"""
+        # Error Reply
         return IsHandled
 
     # cmd_f*: file system calls, see below
 
     def cmd_h(self, msg):
-        """Hello"""
+        # Hello
         print("UFuse+")
         return IsHandled
 
     def cmd_hw(self, msg):
-        """Watchdog timer"""
+        # Watchdog timer
         if self.wdt:
             raise ServerError("fx")
         self.wdt = WDT(timeout=int(msg["d"]*1000))
@@ -215,18 +215,18 @@ class UFuse(IOBase):
     # cmd_m*: messaging, see below.
 
     def cmd_p(self, msg):
-        """Ping"""
+        # Ping
         if self.wdt is not None and msg.get("w",False):
             self.wdt.feed()
         return msg.get('d', None)
 
     def cmd_r(self, msg):
-        """Reply"""
+        # Reply
         # right now we don't send stuff we want a reply for
         pass
 
     def cmd_t(self, msg):
-        """get/set time: tuple(Y M D  H M S  uS)"""
+        # get/set time: tuple(Y M D  H M S  uS)
         # right now we don't send stuff thus there's no reply to handle
         d = msg["d"]
         if RTC is None:
@@ -240,15 +240,15 @@ class UFuse(IOBase):
     # REPL/Console calls
 
     def cmd_c(self, msg):
-        """Console"""
+        # Console
         self.to_console(msg["d"])
 
     def cmd_ci(self, msg):
-        """Console init"""
+        # Console init
         self.use_console(msg.get("d",0))
 
     def cmd_cx(self, msg):
-        """Console exit"""
+        # Console exit
         self.drop_console()
 
 
@@ -282,7 +282,7 @@ class UFuse(IOBase):
         f.close()
 
     def cmd_f_c(self, msg):
-        """open, possibly chdir."""
+        # open, possibly chdir.
         for v in self._fd_cache.values():
             v.close()
         self._fd_cache = dict()
@@ -296,12 +296,12 @@ class UFuse(IOBase):
             self._fs_prefix += "/"+d
 
     def cmd_fc(self, msg):
-        """close"""
+        # close
         f = self._fd(msg, drop=True)
         f.close()
 
     def cmd_fd(self, msg):
-        """dir"""
+        # dir
         p = self._fsp(msg)
         try:
             return uos.listdir(p)
@@ -309,12 +309,12 @@ class UFuse(IOBase):
             return [ x[0] for x in uos.ilistdir(p) ]
 
     def cmd_fD(self, msg):
-        """new dir"""
+        # new dir
         p = self._fsp(msg)
         uos.mkdir(p)
 
     def cmd_fg(self, msg):
-        """getattr"""
+        # getattr
         p = self._fsp(msg)
         try:
             s = uos.stat(p)
@@ -328,7 +328,7 @@ class UFuse(IOBase):
             return dict(m="d", t=s[7])
 
     def cmd_fm(self, msg):
-        """move file"""
+        # move file
         p = self._fsp(msg,'s')
         q = self._fsp(msg,'d')
         uos.stat(p)  # must exist
@@ -359,13 +359,13 @@ class UFuse(IOBase):
             uos.rename(r,q)
 
     def cmd_fn(self, msg):
-        """new file"""
+        # new file
         p = self._fsp(msg)
         f = open(p,"wb")
         f.close()
 
     def cmd_fo(self, msg):
-        """open"""
+        # open
         p = self._fsp(msg)
         try:
             f=open(p,msg['fm']+'b')
@@ -377,13 +377,13 @@ class UFuse(IOBase):
             return self._add_f(f)
 
     def cmd_fr(self, msg):
-        """read"""
+        # read
         f = self._fd(msg)
         f.seek(msg['fo'])
         return f.read(msg['fs'])
 
     def cmd_fu(self, msg):
-        """unlink"""
+        # unlink
         p = self._fsp(msg)
         try:
             uos.remove(p)
@@ -393,7 +393,7 @@ class UFuse(IOBase):
             raise
 
     def cmd_fU(self, msg):
-        """unlink dir"""
+        # unlink dir
         p = self._fsp(msg)
         try:
             uos.rmdir(p)
@@ -403,7 +403,7 @@ class UFuse(IOBase):
             raise
 
     def cmd_fw(self, msg):
-        """write"""
+        # write
         f = self._fd(msg)
         f.seek(msg['fo'])
         return f.write(msg['fd'])
@@ -414,15 +414,17 @@ class UFuse(IOBase):
     # Callbacks get (message, *topic) as parameters.
 
     def cmd_m(self, msg):
-        """incoming message"""
+        # incoming message
         self.subs[msg['p']][0](msg["d"], *msg.get("w",()))
 
     def cmd_ms(self, msg):
+        # incoming subscription
         top = msg["d"]
         nr = msg["p"]
         self.subs[nr] = self.added_sub(nr, top)
 
     def cmd_mu(self, msg):
+        # incoming subscription removal
         nr = msg["p"]
         del self.subs[msg["p"]]
         self.removed_sub(nr)
