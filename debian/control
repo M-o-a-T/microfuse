@@ -1,0 +1,33 @@
+Source: microfuse
+Maintainer: Matthias Urlichs <matthias@urlichs.de>
+Section: python
+Priority: optional
+Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9.20150101)
+Standards-Version: 3.9.6
+Homepage: https://github.com/M-o-a-T/microfuse
+
+Package: python3-microfuse
+Architecture: all
+Depends: ${misc:Depends}, ${python3:Depends}
+Description: A FUSE plus MQTT plus REPL channelfor MicroPython
+ =========
+ MicroFUSE
+ =========
+ .
+ This is a file system plus console plus MQTT plus take-your-pick
+ multiplexer for MicroPython.
+ .
+ On the embedded device, a small single-client server runs in the
+ background. It receives file system commands, REPL input, OTA updates,
+ MQTT messages, and/or any other commands you might want to hook up. It
+ sends MQTT messages, REPL output, and any replies your commands generate.
+ .
+ The other side (Linux, for now) starts a multiplexer which connects to that
+ mini-server and exposes a messaging socket and a bidirectional channel for
+ raw REPL data. It also connects to MQTT.
+ .
+ A FUSE driver links the messaging socket to a convenient place in the
+ file system; it's also possible to send file system commands directly.
+ .
+ A terminal program (based on pyserial-miniterm) is included.
+
