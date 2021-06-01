@@ -1,7 +1,13 @@
 # FUSE operations
 
 import pyfuse3
-from pyfuse3 import FUSEError, EntryAttributes, FileInfo, RENAME_EXCHANGE, RENAME_NOREPLACE
+from pyfuse3 import (  # pylint: disable=E0611
+    FUSEError,
+    EntryAttributes,
+    FileInfo,
+    RENAME_EXCHANGE,
+    RENAME_NOREPLACE,
+)
 import errno
 import os
 import stat
@@ -9,9 +15,11 @@ from pathlib import PosixPath as Path
 from .link import ServerError
 from collections import defaultdict
 import logging
+
 logger = logging.getLogger(__name__)
 
-class Operations(pyfuse3.Operations):
+
+class Operations(pyfuse3.Operations):  # pylint: disable=I1101
     supports_dot_lookup = False
     enable_writeback_cache = False
     enable_acl = False
@@ -20,10 +28,11 @@ class Operations(pyfuse3.Operations):
     max_write = 256
 
     def __init__(self, link):
+        # pylint: disable=I1101
         super().__init__()
-        self._inode_path_map = { pyfuse3.ROOT_INODE: Path("/") }
-        self._path_inode_map = { Path("/"): pyfuse3.ROOT_INODE }
-        self._lookup_cnt = defaultdict(lambda : 0)
+        self._inode_path_map = {pyfuse3.ROOT_INODE: Path("/")}
+        self._path_inode_map = {Path("/"): pyfuse3.ROOT_INODE}
+        self._lookup_cnt = defaultdict(lambda: 0)
         self._fd_inode_map = dict()
         self._inode_fd_map = dict()
         self._fd_open_count = dict()
@@ -78,7 +87,7 @@ class Operations(pyfuse3.Operations):
         raise FUSEError(errno.EIO)
 
     async def lookup(self, parent_inode, name, ctx):
-        '''Look up a directory entry by name and get its attributes.
+        """Look up a directory entry by name and get its attributes.
 
         This method should return an `EntryAttributes` instance for the
         directory entry *name* in the directory with inode *parent_inode*.
@@ -96,22 +105,21 @@ class Operations(pyfuse3.Operations):
 
         (Successful) execution of this handler increases the lookup count for
         the returned inode by one.
-        '''
+        """
         p = self.i_path(parent_inode) / name.decode("utf-8")
         try:
             return await self.getattr(self._path_inode_map[p], ctx)
         except KeyError:
             try:
-                d = await self._link.send("fg",str(p))
+                d = await self._link.send("fg", str(p))
             except ServerError as err:
                 self.raise_error(err)
             else:
                 inode = self.i_add(p)
                 return await self.getattr(inode, ctx, _res=d)
 
-
     async def forget(self, inode_list):
-        '''Decrease lookup counts for inodes in *inode_list*
+        """Decrease lookup counts for inodes in *inode_list*
 
         *inode_list* is a list of ``(inode, nlookup)`` tuples. This method
         should reduce the lookup count for each *inode* by *nlookup*.
@@ -129,7 +137,7 @@ class Operations(pyfuse3.Operations):
 
         This method must not raise any exceptions (not even `FUSEError`), since
         it is not handling a particular client request.
-        '''
+        """
 
         for i in inode_list:
             try:
@@ -137,21 +145,20 @@ class Operations(pyfuse3.Operations):
             except KeyError:
                 pass
 
-
-    async def getattr(self, inode, ctx, _res=None):
-        '''Get attributes for *inode*
+    async def getattr(self, inode, _ctx, _res=None):
+        """Get attributes for *inode*
 
         *ctx* will be a `RequestContext` instance.
 
         This method should return an `EntryAttributes` instance with the
         attributes of *inode*. The `~EntryAttributes.entry_timeout` attribute is
         ignored in this context.
-        '''
+        """
 
         p = self.i_path(inode)
         if _res is None:
             try:
-                d = await self._link.send("fg",str(p))
+                d = await self._link.send("fg", str(p))
             except ServerError as err:
                 self.raise_error(err, inode)
         else:
@@ -163,21 +170,20 @@ class Operations(pyfuse3.Operations):
         r.entry_timeout = 300
         r.attr_timeout = 300
         if d.get('m') == 'd':
-            r.st_mode = stat.S_IFDIR| 0o777
+            r.st_mode = stat.S_IFDIR | 0o777
         elif d.get('m') == 'f':
-            r.st_mode = stat.S_IFREG| 0o666
-        r.st_mtime_ns = t*1_000_000_000
-        r.st_ctime_ns = t*1_000_000_000
-        r.st_atime_ns = t*1_000_000_000
-        r.st_birthtime_ns = t*1_000_000_000
-        r.st_size = d.get('s',0)
+            r.st_mode = stat.S_IFREG | 0o666
+        r.st_mtime_ns = t * 1_000_000_000
+        r.st_ctime_ns = t * 1_000_000_000
+        r.st_atime_ns = t * 1_000_000_000
+        r.st_birthtime_ns = t * 1_000_000_000
+        r.st_size = d.get('s', 0)
         r.st_blksize = 256
         r.st_blocks = (r.st_size - 1) // r.st_blksize + 1
         return r
 
-
     async def setattr(self, inode, attr, fields, fh, ctx):
-        '''Change attributes of *inode*
+        """Change attributes of *inode*
 
         *fields* will be an `SetattrFields` instance that specifies which
         attributes are to be updated. *attr* will be an `EntryAttributes`
@@ -199,23 +205,24 @@ class Operations(pyfuse3.Operations):
 
         The method should return an `EntryAttributes` instance (containing both
         the changed and unchanged values).
-        '''
+        """
 
-        logger.warning("NotImpl: setattr: i=%r a=%r f=%r h=%r ctx=%r", inode, attr, fields, fh, ctx)
+        logger.warning(
+            "NotImpl: setattr: i=%r a=%r f=%r h=%r ctx=%r", inode, attr, fields, fh, ctx
+        )
         raise FUSEError(errno.ENOSYS)
 
     async def readlink(self, inode, ctx):
-        '''Return target of symbolic link *inode*.
+        """Return target of symbolic link *inode*.
 
         *ctx* will be a `RequestContext` instance.
-        '''
+        """
 
         logger.warning("NotImpl: readlink: i=%r ctx=%r", inode, ctx)
         raise FUSEError(errno.ENOSYS)
 
-
     async def mknod(self, parent_inode, name, mode, rdev, ctx):
-        '''Create (possibly special) file
+        """Create (possibly special) file
 
         This method must create a (special or regular) file *name* in the
         directory with inode *parent_inode*. Whether the file is special or
@@ -228,13 +235,15 @@ class Operations(pyfuse3.Operations):
 
         (Successful) execution of this handler increases the lookup count for
         the returned inode by one.
-       '''
+        """
 
-        logger.warning("NotImpl: mknod: p=%r n=%r m=%r d=%r ctx=%r", parent_inode, name, mode, rdev, ctx)
+        logger.warning(
+            "NotImpl: mknod: p=%r n=%r m=%r d=%r ctx=%r", parent_inode, name, mode, rdev, ctx
+        )
         raise FUSEError(errno.ENOSYS)
 
-    async def mkdir(self, parent_inode, name, mode, ctx):
-        '''Create a directory
+    async def mkdir(self, parent_inode, name, _mode, ctx):
+        """Create a directory
 
         This method must create a new directory *name* with mode *mode* in the
         directory with inode *parent_inode*. *ctx* will be a `RequestContext`
@@ -245,16 +254,16 @@ class Operations(pyfuse3.Operations):
 
         (Successful) execution of this handler increases the lookup count for
         the returned inode by one.
-        '''
+        """
         p = self.i_path(parent_inode) / name.decode()
         try:
-            await self._link.send("fD",str(p))
+            await self._link.send("fD", str(p))
         except ServerError as err:
             self.raise_error(err)
         return await self.getattr(self.i_add(p), ctx)
 
-    async def unlink(self, parent_inode, name, ctx):
-        '''Remove a (possibly special) file
+    async def unlink(self, parent_inode, name, _ctx):
+        """Remove a (possibly special) file
 
         This method must remove the (special or regular) file *name* from the
         direcory with inode *parent_inode*.  *ctx* will be a `RequestContext`
@@ -271,16 +280,16 @@ class Operations(pyfuse3.Operations):
         (and of course only if at that point there are no more directory entries
         associated with the inode either).
 
-        '''
+        """
 
         p = self.i_path(parent_inode) / name.decode()
         try:
-            await self._link.send("fu",str(p))
+            await self._link.send("fu", str(p))
         except ServerError as err:
             self.raise_error(err)
 
-    async def rmdir(self, parent_inode, name, ctx):
-        '''Remove directory *name*
+    async def rmdir(self, parent_inode, name, _ctx):
+        """Remove directory *name*
 
         This method must remove the directory *name* from the direcory with
         inode *parent_inode*. *ctx* will be a `RequestContext` instance. If
@@ -299,16 +308,16 @@ class Operations(pyfuse3.Operations):
         is not required to check if there are still other directory entries
         refering to the same inode. This conveniently avoids the ambigiouties
         associated with the ``.`` and ``..`` entries).
-        '''
+        """
 
         p = self.i_path(parent_inode) / name.decode()
         try:
-            await self._link.send("fU",str(p))
+            await self._link.send("fU", str(p))
         except ServerError as err:
             self.raise_error(err)
 
     async def symlink(self, parent_inode, name, target, ctx):
-        '''Create a symbolic link
+        """Create a symbolic link
 
         This method must create a symbolink link named *name* in the directory
         with inode *parent_inode*, pointing to *target*.  *ctx* will be a
@@ -319,14 +328,13 @@ class Operations(pyfuse3.Operations):
 
         (Successful) execution of this handler increases the lookup count for
         the returned inode by one.
-        '''
+        """
 
         logger.warning("NotImpl: symlink: p=%r n=%r t=%r ctx=%r", parent_inode, name, target, ctx)
         raise FUSEError(errno.ENOSYS)
 
-    async def rename(self, parent_inode_old, name_old, parent_inode_new,
-               name_new, flags, ctx):
-        '''Rename a directory entry.
+    async def rename(self, parent_inode_old, name_old, parent_inode_new, name_new, flags, ctx):
+        """Rename a directory entry.
 
         This method must rename *name_old* in the directory with inode
         *parent_inode_old* to *name_new* in the directory with inode
@@ -353,28 +361,35 @@ class Operations(pyfuse3.Operations):
         deferred to the `forget` method to be carried out when the lookup count
         reaches zero (and of course only if at that point there are no more
         directory entries associated with *inode_deref* either).
-        '''
+        """
 
         try:
             p = self.i_path(parent_inode_old) / name_old.decode()
             q = self.i_path(parent_inode_new) / name_new.decode()
 
             if flags == 0:
-                await self._link.send("fm",s=str(p),d=str(q))
+                await self._link.send("fm", s=str(p), d=str(q))
             elif flags == RENAME_EXCHANGE:
-                r = "_xfn_%d" % os.getpid() # in the root
-                await self._link.send("fm",s=str(p),d=str(q),x=str(r))
+                r = "_xfn_%d" % os.getpid()  # in the root
+                await self._link.send("fm", s=str(p), d=str(q), x=str(r))
             elif flags == RENAME_NOREPLACE:
-                await self._link.send("fm",s=str(p),d=str(q),n=True)
+                await self._link.send("fm", s=str(p), d=str(q), n=True)
             else:
-                logger.warning("NotImpl: rename: p=%r n=%r d=%r n=%r f=%r ctx=%r", parent_inode_old, name_old, parent_inode_new, name_new, flags, ctx)
+                logger.warning(
+                    "NotImpl: rename: p=%r n=%r d=%r n=%r f=%r ctx=%r",
+                    parent_inode_old,
+                    name_old,
+                    parent_inode_new,
+                    name_new,
+                    flags,
+                    ctx,
+                )
                 raise FUSEError(errno.ENOSYS)
         except ServerError as err:
             self.raise_error(err)
 
-
     async def link(self, inode, new_parent_inode, new_name, ctx):
-        '''Create directory entry *name* in *parent_inode* refering to *inode*.
+        """Create directory entry *name* in *parent_inode* refering to *inode*.
 
         *ctx* will be a `RequestContext` instance.
 
@@ -383,13 +398,15 @@ class Operations(pyfuse3.Operations):
 
         (Successful) execution of this handler increases the lookup count for
         the returned inode by one.
-        '''
+        """
 
-        logger.warning("NotImpl: link: i=%r p=%r n=%r ctx=%r", inode, new_parent_inode, new_name, ctx)
+        logger.warning(
+            "NotImpl: link: i=%r p=%r n=%r ctx=%r", inode, new_parent_inode, new_name, ctx
+        )
         raise FUSEError(errno.ENOSYS)
 
-    async def open(self, inode, flags, ctx):
-        '''Open a inode *inode* with *flags*.
+    async def open(self, inode, flags, _ctx):
+        """Open a inode *inode* with *flags*.
 
         *ctx* will be a `RequestContext` instance.
 
@@ -402,7 +419,7 @@ class Operations(pyfuse3.Operations):
         `write`, `flush`, `fsync` and `release` methods to identify the open
         file. The `FileInfo` instance may also have relevant configuration
         attributes set; see the `FileInfo` documentation for more information.
-        '''
+        """
         fh = FileInfo()
         if flags & os.O_RDWR:
             m = "a+" if flags & os.O_APPEND else "r+"
@@ -412,15 +429,15 @@ class Operations(pyfuse3.Operations):
             m = "r"
 
         try:
-            fd = await self._link.send("fo",str(self.i_path(inode)), fm=m)
+            fd = await self._link.send("fo", str(self.i_path(inode)), fm=m)
         except ServerError as err:
             self.raise_error(err)
-        self.f_open(fd,inode)
+        self.f_open(fd, inode)
         fh.fh = fd
         return fh
 
     async def read(self, fh, off, size):
-        '''Read *size* bytes from *fh* at position *off*
+        """Read *size* bytes from *fh* at position *off*
 
         *fh* will by an integer filehandle returned by a prior `open` or
         `create` call.
@@ -428,17 +445,17 @@ class Operations(pyfuse3.Operations):
         This function should return exactly the number of bytes requested except
         on EOF or error, otherwise the rest of the data will be substituted with
         zeroes.
-        '''
+        """
 
         if size <= self.max_read:
-            return await self._link.send("fr",fh,fo=off,fs=size)
+            return await self._link.send("fr", fh, fo=off, fs=size)
 
         # OWCH. Need to break that large read up.
 
         data = []
         while size > 0:
-            dl = min(size,self.max_read)
-            buf = await self._link.send("fr",fh,fo=off,fs=dl)
+            dl = min(size, self.max_read)
+            buf = await self._link.send("fr", fh, fo=off, fs=dl)
             if not len(buf):
                 break
             data.append(buf)
@@ -449,7 +466,7 @@ class Operations(pyfuse3.Operations):
         return b''.join(data)
 
     async def write(self, fh, off, buf):
-        '''Write *buf* into *fh* at *off*
+        """Write *buf* into *fh* at *off*
 
         *fh* will by an integer filehandle returned by a prior `open` or
         `create` call.
@@ -458,22 +475,24 @@ class Operations(pyfuse3.Operations):
         file system has been mounted with the ``direct_io`` option, the file
         system *must* always write *all* the provided data (i.e., return
         ``len(buf)``).
-        '''
+        """
 
         if len(buf) <= self.max_write:
-            return await self._link.send("fw",fh,fo=off,fd=buf)
-        
+            return await self._link.send("fw", fh, fo=off, fd=buf)
+
         # OWCH. Break that up.
         sent = 0
         while sent < len(buf):
-            sn = await self._link.send("fw",fh,fo=off+sent,fd=buf[sent:sent+self.max_write])
+            sn = await self._link.send(
+                "fw", fh, fo=off + sent, fd=buf[sent : sent + self.max_write]
+            )
             sent += sn
             if sn < self.max_write:
                 break
         return sent
 
     async def flush(self, fh):
-        '''Handle close() syscall.
+        """Handle close() syscall.
 
         *fh* will by an integer filehandle returned by a prior `open` or
         `create` call.
@@ -481,12 +500,12 @@ class Operations(pyfuse3.Operations):
         This method is called whenever a file descriptor is closed. It may be
         called multiple times for the same open file (e.g. if the file handle
         has been duplicated).
-        '''
+        """
 
         pass
 
     async def release(self, fh):
-        '''Release open file
+        """Release open file
 
         This method will be called when the last file descriptor of *fh* has
         been closed, i.e. when the file is no longer opened by any client
@@ -499,45 +518,44 @@ class Operations(pyfuse3.Operations):
 
         This method may return an error by raising `FUSEError`, but the error
         will be discarded because there is no corresponding client request.
-        '''
+        """
         self.f_close(fh)
-        await self._link.send("fc",fh)
+        await self._link.send("fc", fh)
 
     async def fsync(self, fh, datasync):
-        '''Flush buffers for open file *fh*
+        """Flush buffers for open file *fh*
 
         If *datasync* is true, only the file contents should be
         flushed (in contrast to the metadata about the file).
 
         *fh* will by an integer filehandle returned by a prior `open` or
         `create` call.
-        '''
+        """
         pass
 
     async def opendir(self, inode, ctx):
-        '''Open the directory with inode *inode*
+        """Open the directory with inode *inode*
 
         *ctx* will be a `RequestContext` instance.
 
         This method should return an integer file handle. The file handle will
         be passed to the `readdir`, `fsyncdir` and `releasedir` methods to
         identify the directory.
-        '''
+        """
 
         p = self.i_path(inode)
         try:
-            dc = await self._link.send("fd",str(p))
+            dc = await self._link.send("fd", str(p))
         except ServerError as err:
             self.raise_error(err)
 
         self._last_dir_fh += 1
         fh = self._last_dir_fh
-        self._dir_content[fh] = (inode,dc,ctx)
+        self._dir_content[fh] = (inode, dc, ctx)
         return fh
 
-
     async def readdir(self, fh, start_id, token):
-        '''Read entries in open directory *fh*.
+        """Read entries in open directory *fh*.
 
         This method should list the contents of directory *fh* (as returned by a
         prior `opendir` call), starting at the entry identified by *start_id*.
@@ -563,9 +581,9 @@ class Operations(pyfuse3.Operations):
         required. However, if they are reported the filesystem *must not*
         increase the lookup count for the corresponding inodes (even if
         `readdir_reply` returns True).
-        '''
+        """
 
-        dir_inode,dc,ctx = self._dir_content[fh]
+        dir_inode, dc, ctx = self._dir_content[fh]
         p = self.i_path(dir_inode)
 
         for name in dc[start_id:]:
@@ -579,47 +597,49 @@ class Operations(pyfuse3.Operations):
                 raise
 
             start_id += 1
-            if not pyfuse3.readdir_reply(token,name.encode("utf-8"),attr,start_id):
+            if not pyfuse3.readdir_reply(  # pylint: disable=I1101
+                token, name.encode("utf-8"), attr, start_id
+            ):
                 break
 
     async def releasedir(self, fh):
-        '''Release open directory
+        """Release open directory
 
         This method will be called exactly once for each `opendir` call. After
         *fh* has been released, no further `readdir` requests will be received
         for it (until it is opened again with `opendir`).
-        '''
+        """
 
         del self._dir_content[fh]
 
     async def fsyncdir(self, fh, datasync):
-        '''Flush buffers for open directory *fh*
+        """Flush buffers for open directory *fh*
 
         If *datasync* is true, only the directory contents should be
         flushed (in contrast to metadata about the directory itself).
-        '''
+        """
 
         pass
 
     async def statfs(self, ctx):
-        '''Get file system statistics
+        """Get file system statistics
 
         *ctx* will be a `RequestContext` instance.
 
         The method must return an appropriately filled `StatvfsData` instance.
-        '''
+        """
 
         logger.warning("NotImpl: statfs: ctx=%r", ctx)
         raise FUSEError(errno.ENOSYS)
 
     def stacktrace(self):
-        '''Asynchronous debugging
+        """Asynchronous debugging
 
         This method will be called when the ``fuse_stacktrace`` extended
         attribute is set on the mountpoint. The default implementation logs the
         current stack trace of every running Python thread. This can be quite
         useful to debug file system deadlocks.
-        '''
+        """
 
         import sys
         import traceback
@@ -635,59 +655,58 @@ class Operations(pyfuse3.Operations):
         logger.error("\n".join(code))
 
     async def setxattr(self, inode, name, value, ctx):
-        '''Set extended attribute *name* of *inode* to *value*.
+        """Set extended attribute *name* of *inode* to *value*.
 
         *ctx* will be a `RequestContext` instance.
 
         The attribute may or may not exist already. Both *name* and *value* will
         be of type `bytes`. *name* is guaranteed not to contain zero-bytes
         (``\\0``).
-        '''
+        """
 
-        logger.warning("NotImpl: setxattr")
+        logger.warning("NotImpl: setxattr: i=%r n=%r v=%r ctx=%r", inode, name, value, ctx)
         raise FUSEError(errno.ENOSYS)
 
     async def getxattr(self, inode, name, ctx):
-        '''Return extended attribute *name* of *inode*
+        """Return extended attribute *name* of *inode*
 
         *ctx* will be a `RequestContext` instance.
 
         If the attribute does not exist, the method must raise `FUSEError` with
         an error code of `ENOATTR`. *name* will be of type `bytes`, but is
         guaranteed not to contain zero-bytes (``\\0``).
-        '''
+        """
 
-        logger.warning("NotImpl: getxattr")
+        logger.warning("NotImpl: getxattr: i=%r n=%r ctx=%r", inode, name, ctx)
         raise FUSEError(errno.ENOSYS)
 
     async def listxattr(self, inode, ctx):
-        '''Get list of extended attributes for *inode*
+        """Get list of extended attributes for *inode*
 
         *ctx* will be a `RequestContext` instance.
 
         This method must return a sequence of `bytes` objects.  The objects must
         not include zero-bytes (``\\0``).
-        '''
+        """
 
-        logger.warning("NotImpl: listxattr")
+        logger.warning("NotImpl: listxattr: i=%r ctx=%r", inode, ctx)
         raise FUSEError(errno.ENOSYS)
 
     async def removexattr(self, inode, name, ctx):
-        '''Remove extended attribute *name* of *inode*
+        """Remove extended attribute *name* of *inode*
 
         *ctx* will be a `RequestContext` instance.
 
         If the attribute does not exist, the method must raise `FUSEError` with
         an error code of `ENOATTR`. *name* will be of type `bytes`, but is
         guaranteed not to contain zero-bytes (``\\0``).
-        '''
+        """
 
-        logger.warning("NotImpl: removexattr")
+        logger.warning("NotImpl: removexattr: i=%r n=%r ctx=%r", inode, name, ctx)
         raise FUSEError(errno.ENOSYS)
 
-
     async def access(self, inode, mode, ctx):
-        '''Check if requesting process has *mode* rights on *inode*.
+        """Check if requesting process has *mode* rights on *inode*.
 
         *ctx* will be a `RequestContext` instance.
 
@@ -698,13 +717,13 @@ class Operations(pyfuse3.Operations):
 
         When implementing this method, the `get_sup_groups` function may be
         useful.
-        '''
+        """
 
         logger.warning("NotImpl: access: i=%r m=%r ctx=%r", inode, mode, ctx)
         raise FUSEError(errno.ENOSYS)
 
-    async def create(self, parent_inode, name, mode, flags, ctx):
-        '''Create a file with permissions *mode* and open it with *flags*
+    async def create(self, parent_inode, name, _mode, flags, ctx):
+        """Create a file with permissions *mode* and open it with *flags*
 
         *ctx* will be a `RequestContext` instance.
 
@@ -715,7 +734,7 @@ class Operations(pyfuse3.Operations):
 
         (Successful) execution of this handler increases the lookup count for
         the returned inode by one.
-        '''
+        """
 
         p = self.i_path(parent_inode) / name.decode()
         try:
@@ -726,13 +745,13 @@ class Operations(pyfuse3.Operations):
             gen = True
 
         try:
-            r = await self._link.send("fn",str(p))
+            r = await self._link.send("fn", str(p))
         except ServerError as err:
             if gen:
                 self.i_del(i)
             self.raise_error(err)
         else:
             i = self.i_add(p)
-            h = await self.open(i,flags,ctx)
-            a = await self.getattr(i,ctx,_res=r)
-            return (h,a)
+            h = await self.open(i, flags, ctx)
+            a = await self.getattr(i, ctx, _res=r)
+            return (h, a)
