@@ -176,9 +176,17 @@ class UFuse(IOBase):
     _fd_cache = None
     _repl_nr = -1
     debug_console = False
+    sched = None
 
     def __init__(self, port=18266):
         super().__init__()
+
+        try:
+            import sched
+        except ImportError:
+            pass
+        else:
+            self.sched = sched.Scheduler()
 
         self.port = port
         self.clients = set()
