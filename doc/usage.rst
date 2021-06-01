@@ -69,7 +69,7 @@ Start ``mpy-link``. This command accepts these arguments:
   everything the MicroPython system sends is echoed to all of them.
   If not set, new connections are rejected with an error message.
 
-* -b MQTT_URL
+* -M MQTT_URL
 
   Connect to a MQTT server (DistMQTT, Mosquitto, …).
 
@@ -77,12 +77,39 @@ Start ``mpy-link``. This command accepts these arguments:
 Command handler
 ---------------
 
-Run ``mpy-cmd -d ‹path› command ‹args›``. Possible commands are described
+Run ``mpy-cmd ‹name› command ‹args›``. Possible commands are described
 below.
 
 REPL
 ----
 
-Run ``mpy-repl -r ‹path›``.
+Run ``mpy-term -p ‹name›``.
 
+
+Commands
+--------
+
+ping
+++++
+
+Check that the MicroPython device is alive.
+
+mount
++++++
+
+Mount the MicroPython device's file system via FUSE.
+
+Options:
+
+* -b ‹blocksize›
+
+  Change the size of the data to be transmitted. This should definitely be
+  a power of 2!
+
+  Larger sizes risk out-of-memory problems. Smaller sizes increase wear and
+  tear on your Flash storage.
+
+* ‹mountpoint›
+
+  The directory to mount the device onto. Mandatory. Must exist and be empty.
 
