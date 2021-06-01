@@ -24,7 +24,11 @@ TODO
 
 * OTA updates.
 
-* File system commands from the command line / an async Python program.
+* set RTC time
+
+* support persistent storage in RTC
+
+* File system commands from the command line and/or from an async Python program.
 
 * The msgpack implementation needs improvement; it is crazy inefficient.
   Sending a console line *should* eat 50 bytes (one three-element dict to be
