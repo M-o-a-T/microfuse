@@ -3,12 +3,13 @@ try:
 except ImportError:
     network = None
 
-from msgpack import Packer, Unpacker
-from time import sleep
-import socket
-import uselect
-import uos
 import errno
+import socket
+from time import sleep
+
+import uos
+import uselect
+from msgpack import Packer, Unpacker
 from uio import IOBase
 
 try:

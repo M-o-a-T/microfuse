@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 # EASY-INSTALL-ENTRY-SCRIPT: 'pyserial==3.5b0','console_scripts','pyserial-miniterm'
-import re
 import os
+import re
 import sys
+
 import click
 
 from microfuse.term import Miniterm, ask_for_port, key_description
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # default args can be used to override when calling main() from an other script

@@ -1,20 +1,22 @@
 # FUSE operations
 
-import pyfuse3
-from pyfuse3 import (  # pylint: disable=E0611
-    FUSEError,
-    EntryAttributes,
-    FileInfo,
-    RENAME_EXCHANGE,
-    RENAME_NOREPLACE,
-)
 import errno
+import logging
 import os
 import stat
-from pathlib import PosixPath as Path
-from .link import ServerError
 from collections import defaultdict
-import logging
+from pathlib import PosixPath as Path
+
+import pyfuse3
+from pyfuse3 import (  # pylint: disable=E0611
+    RENAME_EXCHANGE,
+    RENAME_NOREPLACE,
+    EntryAttributes,
+    FileInfo,
+    FUSEError,
+)
+
+from .link import ServerError
 
 logger = logging.getLogger(__name__)
 

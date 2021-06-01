@@ -1,14 +1,15 @@
 #!/usr/bin/python3
 
-import anyio
-from .util import packer, stream_unpacker, ValueEvent
-from distmqtt.client import open_mqttclient
-from contextlib import asynccontextmanager, contextmanager
-from concurrent.futures import CancelledError
-import os
-from .link import ServerError
-
 import logging
+import os
+from concurrent.futures import CancelledError
+from contextlib import asynccontextmanager, contextmanager
+
+import anyio
+from distmqtt.client import open_mqttclient
+
+from .link import ServerError
+from .util import ValueEvent, packer, stream_unpacker
 
 logger = logging.getLogger(__name__)
 

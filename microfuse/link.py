@@ -1,9 +1,12 @@
-import anyio
-from microfuse.util import packer, stream_unpacker
-from contextlib import asynccontextmanager
-from .util import CtxObj, NotGiven
 import logging
+from contextlib import asynccontextmanager
+
+import anyio
 from outcome import Error, Value
+
+from microfuse.util import packer, stream_unpacker
+
+from .util import CtxObj, NotGiven
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +117,7 @@ class Link(CtxObj):
     @asynccontextmanager
     async def mount(self, path, blocksize=None, debug=False, *, task_status=None):
         import pyfuse3
+
         from .fuse import Operations
 
         operations = Operations(self)

@@ -6,11 +6,13 @@
 # Unlike the standard sched class there's no priority, no runner
 # function, and no locking.
 
-from time import ticks_ms, ticks_diff
 import heapq
 from collections import namedtuple
+from time import ticks_diff, ticks_ms
+
 from machine import Timer as _Timer
 from micropython import schedule as _sched
+
 
 def _cmp(s,o):
 #   if s.time == o.time:

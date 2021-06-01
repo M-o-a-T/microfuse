@@ -14,10 +14,10 @@ from __future__ import absolute_import
 
 import codecs
 import os
+import socket
+import stat
 import sys
 import threading
-import stat
-import socket
 
 from serial.tools import hexlify_codec
 
@@ -25,8 +25,12 @@ from serial.tools import hexlify_codec
 
 codecs.register(lambda c: hexlify_codec.getregentry() if c == 'hexlify' else None)
 
-from serial.tools.miniterm import key_description, Console
-from serial.tools.miniterm import EOL_TRANSFORMATIONS, TRANSFORMATIONS
+from serial.tools.miniterm import (
+    EOL_TRANSFORMATIONS,
+    TRANSFORMATIONS,
+    Console,
+    key_description,
+)
 
 
 def comports(d):

@@ -1,6 +1,6 @@
 #!/usr/bin/micropython
-import usys
 import ufuse
+import usys
 
 u = ufuse.UFuse()
 u.start()

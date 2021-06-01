@@ -1,10 +1,12 @@
 # coding: utf-8
 # copied from https://github.com/msgpack/msgpack-python
+import struct
 from collections import namedtuple
+
 import uos as os
 import usys as sys
-import struct
 from uio import BytesIO
+
 
 class UnpackException(Exception):
     pass

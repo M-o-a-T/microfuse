@@ -1,18 +1,20 @@
 #!/usr/bin/python3
 
-import anyio
-from anyio.streams.text import TextReceiveStream
-from tempfile import TemporaryDirectory
+import logging
 import os
-from pathlib import Path
 import subprocess
 import sys
-import asyncclick as click
 from contextlib import contextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from microfuse.multiplex import Multiplexer
+import anyio
+import asyncclick as click
+from anyio.streams.text import TextReceiveStream
+
 from microfuse.link import Link
-import logging
+from microfuse.multiplex import Multiplexer
+
 logger = logging.getLogger(__name__)
 
 click.anyio_backend="trio"

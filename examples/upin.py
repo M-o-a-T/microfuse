@@ -3,9 +3,11 @@
 # The MQTT message contains the msgpack-encoded time (in msec) the button
 # was pressed.
 #
+from time import ticks_diff, ticks_ms
+
 from machine import Pin as _Pin
 from micropython import schedule as _sched
-from time import ticks_ms, ticks_diff
+
 
 class UPin:
     def __init__(self, U, pin_nr, delay=50, topic=None, exp=()):
