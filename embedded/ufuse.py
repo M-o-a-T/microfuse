@@ -104,7 +104,7 @@ class UFuseClient:
             self.sock.setsockopt(socket.SOL_SOCKET, 20, self._sched_read)
         except TypeError:
             self.poll = uselect.poll()
-            self.poll.register(sock,uselect.POLLIN)
+            self.poll.register(self.sock,uselect.POLLIN)
             print("No client auto read.")
         self.send(a="h")
 

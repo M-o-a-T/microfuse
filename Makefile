@@ -1,6 +1,10 @@
 #!/usr/bin/make -f
 
 PACKAGE=microfuse
+TESTS=
+
+utest:
+	PYTHONPATH=. python3 scripts/run_test.py
 
 ifneq ($(wildcard /usr/share/sourcemgr/make/py),)
 include /usr/share/sourcemgr/make/py
