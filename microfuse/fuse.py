@@ -251,6 +251,7 @@ class Operations(pyfuse3.Operations):
             await self._link.send("fD",str(p))
         except ServerError as err:
             self.raise_error(err)
+        return await self.getattr(self.i_add(p), ctx)
 
     async def unlink(self, parent_inode, name, ctx):
         '''Remove a (possibly special) file
