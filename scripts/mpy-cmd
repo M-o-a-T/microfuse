@@ -23,6 +23,15 @@ click.anyio_backend="trio"
 @click.argument("socket", type=click.Path())
 @click.pass_context
 async def main(ctx, socket, verbose):
+    try:
+        os.stat(socket)
+    except FileNotFoundError:
+        p = os.path.join(os.environ["XDG_RUNTIME_DIR"], socket)
+        if p != socket:
+            socket = p
+            os.stat(socket)
+        else:
+            raise
     ctx.obj = attrdict()
     ctx.obj.link = await ctx.with_async_resource(Link(socket))
 

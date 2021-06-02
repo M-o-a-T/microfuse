@@ -60,7 +60,7 @@ def main(port, ask, echo, encoding, filter, eol, raw, exit_char, menu_char, quie
                 p = os.path.join(os.environ["XDG_RUNTIME_DIR"], port)
                 if p == port:
                     raise
-                s = os.stat(port)
+                s = os.stat(p)
                 port = p
 
         except FileNotFoundError:
