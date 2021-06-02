@@ -76,6 +76,7 @@ def setup_conn(port, accept_handler):
 
 class UFuseClient:
     poll = None
+    _sched = False
     def __init__(self, server, sock):
         self.server = server
         self.sock = sock
@@ -112,7 +113,9 @@ class UFuseClient:
     def _sched_read(self, _):
         # defer to a scheduled task so that the reader isn't itself
         # interrupted when "dupterm_notify" processes a keyboard interrupt
-        schedule(self._read, _)
+        if not self._sched:
+            self._sched = True
+            schedule(self._read, _)
 
     def _read(self, _):
         if self.poll is not None:
@@ -129,6 +132,7 @@ class UFuseClient:
             self.unpacker.feed(self.buf[:d])
             for msg in self.unpacker:
                 self._process(msg)
+        self._sched = False
 
     def _process(self, msg):
         if 'a' not in msg:
