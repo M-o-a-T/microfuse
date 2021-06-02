@@ -244,6 +244,8 @@ class Multiplexer:
 
         This is a subtask.
         """
+        if self.mqtt is None:
+            return
         if isinstance(topic, str):
             topic = topic.split("/")
         spl = '#' in topic or '+' in topic
@@ -523,6 +525,8 @@ class Multiplexer:
     # Messaging
 
     async def cmd_m(self, p, d=None, w=(), r=False, **_kw):
+        if self.mqtt is None:
+            return
         if isinstance(p, int):
             p, c, _ = self.subs[p]
         else:
@@ -542,11 +546,16 @@ class Multiplexer:
             p = pr
         await self.mqtt.publish(p, d, codec=c)
 
+
     async def cmd_ms(self, d, p, r=False, **_kw):
         if isinstance(d, str):
             d = d.split("/")
         await self._tg.start(self.subscribed_mqtt, d, r, p)
 
     async def cmd_mu(self, p, **_kw):
-        _, _, c = self.subs[p]
-        c.cancel()
+        try:
+            _, _, c = self.subs[p]
+        except KeyError:
+            pass
+        else:
+            c.cancel()
