@@ -24,12 +24,12 @@ class UPin:
         self.topic = topic
         self.exp = exp
         self._sched = False
-        self._scan_ = self.U.sched.enter(self.delay*5, self._scan)
+        self._scan_ = self.U.sched.enter(self.delay*5,self._scan)
 
     def _scan(self):
         if self._sched:
             self._irq()
-        self.U.sched.enter(self.delay*5, self._scan_)
+        self._scan_ = self.U.sched.enter(self.delay*5,self._scan)
 
     def _do_irq(self, _):
         if self._sched or self._dly is not None:
@@ -47,14 +47,14 @@ class UPin:
 
         if self._dly is not None:
             self.U.sched.cancel(self._dly)
-        self._dly = self.U.sched.enter(self.delay, self._timer)
+        self._dly = self.U.sched.enter(self.delay,self._timer)
 
     def _timer(self):
+        self._dly = None
         if not self.pin():
-            self.U.sched.enter(self.delay, self._dly)
+            self._dly = self.U.sched.enter(self.delay,self._timer)
             return
 
-        self._dly = None
         t = ticks_diff(ticks_ms(),self.on)-self.delay
         if self.topic:
             self.U.publish(self.topic, t, exp=self.exp)

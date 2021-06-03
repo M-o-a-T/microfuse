@@ -72,7 +72,7 @@ class Scheduler:
         # runs in IRQ.
         try:
             _sched(self._run_, None)
-        except Exception:
+        except RuntimeError:
             self._timer.init(mode=_Timer.ONE_SHOT, period=1, callback=self._sched_run_)
 
     def cancel(self, event):
