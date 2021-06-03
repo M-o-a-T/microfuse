@@ -109,7 +109,10 @@ class UFuseClient:
         # interrupted when "dupterm_notify" processes a keyboard interrupt
         if not self._sched:
             self._sched = True
-            schedule(self._read, _)
+            try:
+                schedule(self._read, _)
+            except RuntimeError:
+                self._sched = False
 
     def _read(self, _):
         try:
