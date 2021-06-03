@@ -19,7 +19,12 @@ def _cmp(s,o):
 #       return s.priority - o.priority
     return ticks_diff(s.time, o.time)
 
-class Event(namedtuple('Event', 'time action argument kwargs')):
+class Event:
+    def __init__(self, time, action, a, kw):
+        self.time = time
+        self.action = action
+        self.a = a
+        self.kw = kw
     def __eq__(s, o): return _cmp(s,o) == 0
     def __lt__(s, o): return _cmp(s,o) < 0
     def __le__(s, o): return _cmp(s,o) <= 0
@@ -91,13 +96,13 @@ class Scheduler:
             q = self._queue
             pop = heapq.heappop
             while q:
-                t, action, argument, kwargs = q[0]
+                e = q[0]
                 now = ticks_ms()
-                if ticks_diff(t,now) > 0:
+                if ticks_diff(e.time, now) > 0:
                     break
                 else:
                     pop(q)
-                    action(*argument, **kwargs)
+                    e.action(*e.a, **e.kw)
         finally:
             self._running = False
             self._set_timer()
