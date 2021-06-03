@@ -53,8 +53,6 @@ class ExtType(namedtuple("ExtType", "code data")):
             raise ValueError("code must be 0~127")
         return super(ExtType, cls).__new__(cls, code, data)
 
-newlist_hint = lambda size: []
-
 TYPE_IMMEDIATE = 0
 TYPE_ARRAY = 1
 TYPE_MAP = 2
@@ -89,14 +87,14 @@ def unpackb(packed, **kwargs):
 
     See :class:`Unpacker` for options.
     """
-    unpacker = Unpacker(None, max_buffer_size=len(packed), **kwargs)
+    unpacker = Unpacker(None, buffer_size=len(packed), **kwargs)
     unpacker.feed(packed)
     try:
         ret = unpacker._unpack()
     except OutOfData:
-        raise ValueError("Unpack failed: incomplete input")
-    if unpacker._got_extradata():
-        raise ExtraData(ret, unpacker._get_extradata())
+        raise ValueError("incomplete")
+    if unpacker._has_extra():
+        raise ExtraData(ret, unpacker._get_extra())
     return ret
 
 
@@ -136,170 +134,90 @@ _MSGPACK_HEADERS = {
 class Unpacker(object):
     def __init__(
         self,
-        file_like=None,
-        read_size=0,
-        use_list=True,
-        raw=False,
-        timestamp=0,
-        strict_map_key=True,
-        object_hook=None,
-        object_pairs_hook=None,
-        list_hook=None,
-        unicode_errors=None,
-        max_buffer_size=10 * 1024,
+        reader,  # readinto()
+        buf_size=5*1024,  # max message size
+        as_memview=32,  # bytestrings at least that size are returned as memoryview
         ext_hook=ExtType,
-        max_str_len=-1,
-        max_bin_len=-1,
-        max_array_len=-1,
-        max_map_len=-1,
-        max_ext_len=-1,
     ):
-        if unicode_errors is None:
-            unicode_errors = "strict"
+        self.reader = reader
 
-        if file_like is None:
-            self._feeding = True
-        else:
-            if not callable(file_like.read):
-                raise TypeError("`file_like.read` must be callable")
-            self.file_like = file_like
-            self._feeding = False
+        #: Input buffer. Must be at least max expected packet.
+        self._buffer = bytearray(buf_size)
+        self._b = memoryview(self._buffer)
+        self._b_l = buf_size
 
-        #: array of bytes fed.
-        self._buffer = bytearray()
-        #: Which position we currently reads
-        self._buff_i = 0
+        #: Which position we currently read
+        self._b_i = 0
 
-        self._buf_checkpoint = 0
+        #: buffer fill mark
+        self._b_n = 0
 
-        if not max_buffer_size:
-            max_buffer_size = 2 ** 31 - 1
-        if max_str_len == -1:
-            max_str_len = max_buffer_size
-        if max_bin_len == -1:
-            max_bin_len = max_buffer_size
-        if max_array_len == -1:
-            max_array_len = max_buffer_size
-        if max_map_len == -1:
-            max_map_len = max_buffer_size // 2
-        if max_ext_len == -1:
-            max_ext_len = max_buffer_size
+        #: start of current message
+        self._b_cp = 0
 
-        self._max_buffer_size = max_buffer_size
-        if read_size > self._max_buffer_size:
-            raise ValueError("read_size must be smaller than max_buffer_size")
-        self._read_size = read_size or min(self._max_buffer_size, 16 * 1024)
-        self._raw = bool(raw)
-        self._strict_map_key = bool(strict_map_key)
-        self._unicode_errors = unicode_errors
-        self._use_list = use_list
-        if not (0 <= timestamp <= 3):
-            raise ValueError("timestamp must be 0..3")
-        self._timestamp = timestamp
-        self._list_hook = list_hook
-        self._object_hook = object_hook
-        self._object_pairs_hook = object_pairs_hook
+        self._mvm = as_memview
         self._ext_hook = ext_hook
-        self._max_str_len = max_str_len
-        self._max_bin_len = max_bin_len
-        self._max_array_len = max_array_len
-        self._max_map_len = max_map_len
-        self._max_ext_len = max_ext_len
         self._stream_offset = 0
 
-        if list_hook is not None and not callable(list_hook):
-            raise TypeError("`list_hook` is not callable")
-        if object_hook is not None and not callable(object_hook):
-            raise TypeError("`object_hook` is not callable")
-        if object_pairs_hook is not None and not callable(object_pairs_hook):
-            raise TypeError("`object_pairs_hook` is not callable")
-        if object_hook is not None and object_pairs_hook is not None:
-            raise TypeError(
-                "object_pairs_hook and object_hook are mutually " "exclusive"
-            )
-        if not callable(ext_hook):
-            raise TypeError("`ext_hook` is not callable")
+    def read(self):
+        # returns #bytes
+        if self._b_i == 0:
+            if self._b_n == self._b_l:
+                # buffer full
+                raise ValueError("msg too long")
+        elif self._b_n == self._b_l:
+            # buffer at end, move data to buffer start
+            n = self._b_n - self._b_i
+            self._b[:n] = self._b[-n:]
+            self._b_n = n
+            self._b_i = 0
 
-    def feed(self, next_bytes):
-        assert self._feeding
-        view = _get_data_from_buffer(next_bytes)
-        if len(self._buffer) - self._buff_i + len(view) > self._max_buffer_size:
-            raise BufferFull
+        n = self.reader(self._b[self._b_n:])
+        self._b_n += n
+        return n
 
-        # Strip buffer before checkpoint before reading file.
-        if self._buf_checkpoint > 0:
-            # del self._buffer[: self._buf_checkpoint]
-            self._buffer = self._buffer[self._buf_checkpoint :]
-            self._buff_i -= self._buf_checkpoint
-            self._buf_checkpoint = 0
-
-        # Use extend here: INPLACE_ADD += doesn't reliably typecast memoryview in jython
-        self._buffer.extend(view)
 
     def _consume(self):
-        """ Gets rid of the used parts of the buffer. """
-        self._stream_offset += self._buff_i - self._buf_checkpoint
-        self._buf_checkpoint = self._buff_i
+        # a packet is done
+        if self._b_i == self._b_n:
+            self._b_i = self._b_n = 0
 
-    def _got_extradata(self):
-        return self._buff_i < len(self._buffer)
+        self._b_cp = self._b_i
 
-    def _get_extradata(self):
-        return self._buffer[self._buff_i :]
+    def _has_extra(self):
+        return self._b_i < self._b_n
 
-    def read_bytes(self, n):
-        ret = self._read(n, raise_outofdata=False)
-        self._consume()
-        return ret
+    def _get_extra(self):
+        return self._b[self._b_i:self._b_n]
 
-    def _read(self, n, raise_outofdata=True):
+    def _read(self, n):
         # (int) -> bytearray
-        self._reserve(n, raise_outofdata=raise_outofdata)
-        i = self._buff_i
-        ret = self._buffer[i : i + n]
-        self._buff_i = i + len(ret)
+        self._has(n)
+        i = self._b_i
+        j = i + n
+        ret = self._b[i : j]
+        if self._mvm < n:
+            ret = bytearray(ret)
+        self._b_i = j
         return ret
 
-    def _reserve(self, n, raise_outofdata=True):
-        remain_bytes = len(self._buffer) - self._buff_i - n
+    def _has(self, n):
+        remain_bytes = self._b_n - self._b_i - n
 
         # Fast path: buffer has n bytes already
         if remain_bytes >= 0:
             return
 
-        if self._feeding:
-            self._buff_i = self._buf_checkpoint
-            raise OutOfData
+        self._b_i = self._b_cp
+        raise OutOfData
 
-        # Strip buffer before checkpoint before reading file.
-        if self._buf_checkpoint > 0:
-            # del self._buffer[: self._buf_checkpoint]
-            self._buffer = self._buffer[self._buf_checkpoint :]
-            self._buff_i -= self._buf_checkpoint
-            self._buf_checkpoint = 0
-
-        # Read from file
-        remain_bytes = -remain_bytes
-        while remain_bytes > 0:
-            to_read_bytes = max(self._read_size, remain_bytes)
-            read_data = self.file_like.read(to_read_bytes)
-            if not read_data:
-                break
-            assert isinstance(read_data, bytes)
-            self._buffer += read_data
-            remain_bytes -= len(read_data)
-
-        if len(self._buffer) < n + self._buff_i and raise_outofdata:
-            self._buff_i = 0  # rollback
-            raise OutOfData
-
-    def _read_header(self):
+    def _hdr(self):
         typ = TYPE_IMMEDIATE
         n = 0
         obj = None
-        self._reserve(1)
-        b = self._buffer[self._buff_i]
-        self._buff_i += 1
+        self._has(1)
+        b = self._b[self._b_i]
+        self._b_i += 1
         if b & 0b10000000 == 0:  # x00-x7F
             obj = b
         elif b & 0b11100000 == 0b11100000:  # xE0-xFF
@@ -307,21 +225,13 @@ class Unpacker(object):
         elif b & 0b11100000 == 0b10100000:  # xA0-xBF
             n = b & 0b00011111
             typ = TYPE_RAW
-            if n > self._max_str_len:
-                raise ValueError("%s exceeds max_str_len(%s)" % (n, self._max_str_len))
             obj = self._read(n)
         elif b & 0b11110000 == 0b10010000:  # x90-x9F
             n = b & 0b00001111
             typ = TYPE_ARRAY
-            if n > self._max_array_len:
-                raise ValueError(
-                    "%s exceeds max_array_len(%s)" % (n, self._max_array_len)
-                )
         elif b & 0b11110000 == 0b10000000:  # x80-x8F
             n = b & 0b00001111
             typ = TYPE_MAP
-            if n > self._max_map_len:
-                raise ValueError("%s exceeds max_map_len(%s)" % (n, self._max_map_len))
         elif b == 0xC0:
             obj = None
         elif b == 0xC1:
@@ -332,109 +242,73 @@ class Unpacker(object):
             obj = True
         elif b <= 0xC6:
             size, fmt, typ = _MSGPACK_HEADERS[b]
-            self._reserve(size)
+            self._has(size)
             if len(fmt) > 0:
-                n = struct.unpack_from(fmt, self._buffer, self._buff_i)[0]
+                n = struct.unpack_from(fmt, self._b, self._b_i)[0]
             else:
-                n = self._buffer[self._buff_i]
-            self._buff_i += size
-            if n > self._max_bin_len:
-                raise ValueError("%s exceeds max_bin_len(%s)" % (n, self._max_bin_len))
+                n = self._b[self._b_i]
+            self._b_i += size
             obj = self._read(n)
         elif b <= 0xC9:
             size, fmt, typ = _MSGPACK_HEADERS[b]
-            self._reserve(size)
-            L, n = struct.unpack_from(fmt, self._buffer, self._buff_i)
-            self._buff_i += size
-            if L > self._max_ext_len:
-                raise ValueError("%s exceeds max_ext_len(%s)" % (L, self._max_ext_len))
+            self._has(size)
+            L, n = struct.unpack_from(fmt, self._b, self._b_i)
+            self._b_i += size
             obj = self._read(L)
         elif b <= 0xD3:
             size, fmt = _MSGPACK_HEADERS[b]
-            self._reserve(size)
+            self._has(size)
             if len(fmt) > 0:
-                obj = struct.unpack_from(fmt, self._buffer, self._buff_i)[0]
+                obj = struct.unpack_from(fmt, self._b, self._b_i)[0]
             else:
-                obj = self._buffer[self._buff_i]
-            self._buff_i += size
+                obj = self._b[self._b_i]
+            self._b_i += size
         elif b <= 0xD8:
             size, fmt, typ = _MSGPACK_HEADERS[b]
-            if self._max_ext_len < size:
-                raise ValueError(
-                    "%s exceeds max_ext_len(%s)" % (size, self._max_ext_len)
-                )
-            self._reserve(size + 1)
-            n, obj = struct.unpack_from(fmt, self._buffer, self._buff_i)
-            self._buff_i += size + 1
+            self._has(size + 1)
+            n, obj = struct.unpack_from(fmt, self._b, self._b_i)
+            self._b_i += size + 1
         elif b <= 0xDB:
             size, fmt, typ = _MSGPACK_HEADERS[b]
-            self._reserve(size)
+            self._has(size)
             if len(fmt) > 0:
-                (n,) = struct.unpack_from(fmt, self._buffer, self._buff_i)
+                (n,) = struct.unpack_from(fmt, self._b, self._b_i)
             else:
-                n = self._buffer[self._buff_i]
-            self._buff_i += size
-            if n > self._max_str_len:
-                raise ValueError("%s exceeds max_str_len(%s)" % (n, self._max_str_len))
+                n = self._b[self._b_i]
+            self._b_i += size
             obj = self._read(n)
         elif b <= 0xDD:
             size, fmt, typ = _MSGPACK_HEADERS[b]
-            self._reserve(size)
-            (n,) = struct.unpack_from(fmt, self._buffer, self._buff_i)
-            self._buff_i += size
-            if n > self._max_array_len:
-                raise ValueError(
-                    "%s exceeds max_array_len(%s)" % (n, self._max_array_len)
-                )
+            self._has(size)
+            (n,) = struct.unpack_from(fmt, self._b, self._b_i)
+            self._b_i += size
         elif b <= 0xDF:
             size, fmt, typ = _MSGPACK_HEADERS[b]
-            self._reserve(size)
-            (n,) = struct.unpack_from(fmt, self._buffer, self._buff_i)
-            self._buff_i += size
-            if n > self._max_map_len:
-                raise ValueError("%s exceeds max_map_len(%s)" % (n, self._max_map_len))
+            self._has(size)
+            (n,) = struct.unpack_from(fmt, self._b, self._b_i)
+            self._b_i += size
         else:
-            raise FormatError("Unknown header: 0x%x" % b)
+            raise RuntimeError("?!?")
         return typ, n, obj
 
     def _unpack(self):
-        typ, n, obj = self._read_header()
+        typ, n, obj = self._hdr()
 
-        # TODO should we eliminate the recursion?
         if typ == TYPE_ARRAY:
-            ret = newlist_hint(n)
+            ret = [None]*n
             for i in range(n):
-                ret.append(self._unpack())
-            if self._list_hook is not None:
-                ret = self._list_hook(ret)
-            # TODO is the interaction between `list_hook` and `use_list` ok?
-            return ret if self._use_list else tuple(ret)
+                ret[i] = self._unpack()
+            return ret
         if typ == TYPE_MAP:
-            if self._object_pairs_hook is not None:
-                ret = self._object_pairs_hook(
-                    (self._unpack(), self._unpack())
-                    for _ in range(n)
-                )
-            else:
-                ret = {}
-                for _ in range(n):
-                    key = self._unpack()
-                    if self._strict_map_key and type(key) not in (str, bytes):
-                        raise ValueError(
-                            "%s is not allowed for map key" % str(type(key))
-                        )
-                    if type(key) is str and hasattr(sys,'intern'):
-                        key = sys.intern(key)
-                    ret[key] = self._unpack()
-                if self._object_hook is not None:
-                    ret = self._object_hook(ret)
+            ret = {}
+            for _ in range(n):
+                key = self._unpack()
+                ret[key] = self._unpack()
             return ret
         if typ == TYPE_RAW:
-            if self._raw:
+            if isinstance(obj,memoryview):
                 obj = bytes(obj)
-            else:
-                obj = obj.decode("utf_8", self._unicode_errors)
-            return obj
+            return obj.decode("utf_8")
         if typ == TYPE_BIN:
             return bytes(obj)
         if typ == TYPE_EXT:
@@ -451,7 +325,6 @@ class Unpacker(object):
             self._consume()
             return ret
         except OutOfData:
-            self._consume()
             raise StopIteration
 
     next = __next__
@@ -466,44 +339,65 @@ class Packer(object):
     def __init__(
         self,
         default=None,
-        use_single_float=False,
-        autoreset=True,
-        use_bin_type=True,
-        strict_types=False,
-        unicode_errors=None,
+        buf_len=64,
+        writer=None,
     ):
-        self._strict_types = strict_types
-        self._use_float = use_single_float
-        self._autoreset = autoreset
-        self._use_bin_type = use_bin_type
-        self._buffer = BytesIO()
-        self._unicode_errors = unicode_errors or "strict"
-        if default is not None:
-            if not callable(default):
-                raise TypeError("default must be callable")
+        self._b_l = buf_len
+        self._buffer = bytearray(buf_len)
+        self._b = memoryview(self._buffer)
+        self._b_p = 0
+        self.writer = writer
+
         self._default = default
+        self._bad = False
+
+    def _wb(self, x):
+        # write bytes or similar
+        lx = len(x)
+        if self._b_p + lx <= self._b_l:
+            # fits into the buffer
+            self._b[self._b_p:self._b_p+lx] = x
+            self._b_p += lx
+            self.flush()
+            return
+        # doesn't.
+        self.flush()
+
+        if lx*2 >= self._b_l:
+            # at least half the buffer: write directly
+            self.writer(x)
+            return
+        self._b[:lx] = x
+        self._b_p = lx
+
+    def _wp(self, fmt, *x):
+        # write pack
+        try:
+            struct.pack_into(fmt,self._b,self._b_p, *x)
+            self._b_p += struct.calcsize(fmt)
+        except ValueError:
+            self.flush()
+            try:
+                struct.pack_into(fmt,self._b,0, *x)
+                self._b_p = struct.calcsize(fmt)
+            except ValueError:
+                # if we already wrote an incomplete buffer we're SOL
+                self._b_p = 0
+                raise
 
     def _pack(
         self,
         obj,
-        nest_limit=DEFAULT_RECURSE_LIMIT,
         check=isinstance,
         check_type_strict=_check_type_strict,
     ):
         default_used = False
-        if self._strict_types:
-            check = check_type_strict
-            list_types = list
-        else:
-            list_types = (list, tuple)
+        list_types = (list, tuple)
 
-        # shorter bytecode
-        def wp(*x):
-            return self._buffer.write(struct.pack(*x))
-        wb = self._buffer.write
+        wb = self._wb
+        wp = self._wp
+
         while True:
-            if nest_limit < 0:
-                raise ValueError("recursion limit exceeded")
             if obj is None:
                 return wb(b"\xc0")
             if check(obj, bool):
@@ -540,27 +434,19 @@ class Packer(object):
                 raise OverflowError("Integer value out of range")
             if check(obj, (bytes, bytearray)):
                 n = len(obj)
-                if n >= 2 ** 32:
-                    raise ValueError("%s is too large" % type(obj).__name__)
                 self._pack_bin_header(n)
                 return wb(obj)
             if check(obj, str):
-                obj = obj.encode("utf-8", self._unicode_errors)
+                obj = obj.encode("utf-8")
                 n = len(obj)
-                if n >= 2 ** 32:
-                    raise ValueError("String is too large")
                 self._pack_raw_header(n)
                 return wb(obj)
             if check(obj, memoryview):
                 n = len(obj) * obj.itemsize
-                if n >= 2 ** 32:
-                    raise ValueError("Memoryview is too large")
                 self._pack_bin_header(n)
                 return wb(obj)
             if check(obj, float):
-                if self._use_float:
-                    return wp(">Bf", 0xCA, obj)
-                return wp(">Bd", 0xCB, obj)
+                return wp(">Bf", 0xCA, obj)
             if check(obj, ExtType):
                 code = obj.code
                 data = obj.data
@@ -590,12 +476,10 @@ class Packer(object):
                 n = len(obj)
                 self._pack_array_header(n)
                 for i in range(n):
-                    self._pack(obj[i], nest_limit - 1)
+                    self._pack(obj[i])
                 return
             if check(obj, dict):
-                return self._pack_map_pairs(
-                    len(obj), obj.items(), nest_limit - 1
-                )
+                return self._pack_map_pairs(len(obj), obj.items())
 
             if not default_used and self._default is not None:
                 obj = self._default(obj)
@@ -603,41 +487,35 @@ class Packer(object):
                 continue
             raise TypeError("Cannot serialize %r" % (obj,))
 
-    def pack(self, obj):
+    def pack(self, obj, keep=False):
+        # errors are fatal
+        if self._bad:
+            raise ValueError("inconsistent")
         try:
+            self._bad = True
             self._pack(obj)
-        except:
-            self._buffer = BytesIO()  # force reset
+            if not keep:
+                self.flush()
+            self._bad = False
+        except Exception as e:
+            print("ERR",e)
             raise
-        if self._autoreset:
-            ret = self._buffer.getvalue()
-            self._buffer = BytesIO()
-            return ret
+
+    def flush(self):
+        if self._b_p > 0:
+            self.writer(self._b[:self._b_p])
+        self._b_p = 0
 
     def pack_map_pairs(self, pairs):
         self._pack_map_pairs(len(pairs), pairs)
-        if self._autoreset:
-            ret = self._buffer.getvalue()
-            self._buffer = BytesIO()
-            return ret
 
     def pack_array_header(self, n):
-        if n >= 2 ** 32:
-            raise ValueError
         self._pack_array_header(n)
-        if self._autoreset:
-            ret = self._buffer.getvalue()
-            self._buffer = BytesIO()
-            return ret
 
     def pack_map_header(self, n):
         if n >= 2 ** 32:
             raise ValueError
         self._pack_map_header(n)
-        if self._autoreset:
-            ret = self._buffer.getvalue()
-            self._buffer = BytesIO()
-            return ret
 
     def pack_ext_type(self, typecode, data):
         if not isinstance(typecode, int):
@@ -647,89 +525,70 @@ class Packer(object):
         if not isinstance(data, bytes):
             raise TypeError("data must have bytes type")
         L = len(data)
-        if L > 0xFFFFFFFF:
-            raise ValueError("Too large data")
         if L == 1:
-            self._buffer.write(b"\xd4")
+            self._wb(b"\xd4")
         elif L == 2:
-            self._buffer.write(b"\xd5")
+            self._wb(b"\xd5")
         elif L == 4:
-            self._buffer.write(b"\xd6")
+            self._wb(b"\xd6")
         elif L == 8:
-            self._buffer.write(b"\xd7")
+            self._wb(b"\xd7")
         elif L == 16:
-            self._buffer.write(b"\xd8")
+            self._wb(b"\xd8")
         elif L <= 0xFF:
-            self._buffer.write(b"\xc7" + struct.pack("B", L))
+            self._wb(b"\xc7" + struct.pack("B", L))
         elif L <= 0xFFFF:
-            self._buffer.write(b"\xc8" + struct.pack(">H", L))
+            self._wb(b"\xc8" + struct.pack(">H", L))
         else:
-            self._buffer.write(b"\xc9" + struct.pack(">I", L))
-        self._buffer.write(struct.pack("B", typecode))
-        self._buffer.write(data)
+            self._wb(b"\xc9" + struct.pack(">I", L))
+        self._wb(struct.pack("B", typecode))
+        self._wb(data)
 
     def _pack_array_header(self, n):
         if n <= 0x0F:
-            return self._buffer.write(struct.pack("B", 0x90 + n))
-        if n <= 0xFFFF:
-            return self._buffer.write(struct.pack(">BH", 0xDC, n))
-        if n <= 0xFFFFFFFF:
-            return self._buffer.write(struct.pack(">BI", 0xDD, n))
-        raise ValueError("Array is too large")
+            return self._wp("B", 0x90 + n)
+        elif n <= 0xFFFF:
+            return self._wp(">BH", 0xDC, n)
+        else:
+            return self._wp(">BI", 0xDD, n)
 
     def _pack_map_header(self, n):
         if n <= 0x0F:
-            return self._buffer.write(struct.pack("B", 0x80 + n))
-        if n <= 0xFFFF:
-            return self._buffer.write(struct.pack(">BH", 0xDE, n))
-        if n <= 0xFFFFFFFF:
-            return self._buffer.write(struct.pack(">BI", 0xDF, n))
-        raise ValueError("Dict is too large")
+            return self._wp("B", 0x80 + n)
+        elif n <= 0xFFFF:
+            return self._wp(">BH", 0xDE, n)
+        else:
+            return self._wp(">BI", 0xDF, n)
 
-    def _pack_map_pairs(self, n, pairs, nest_limit=DEFAULT_RECURSE_LIMIT):
+    def _pack_map_pairs(self, n, pairs):
         self._pack_map_header(n)
-        for (k, v) in pairs:
-            self._pack(k, nest_limit - 1)
-            self._pack(v, nest_limit - 1)
+        for k, v in pairs:
+            self._pack(k)
+            self._pack(v)
 
     def _pack_raw_header(self, n):
         if n <= 0x1F:
-            self._buffer.write(struct.pack("B", 0xA0 + n))
-        elif self._use_bin_type and n <= 0xFF:
-            self._buffer.write(struct.pack(">BB", 0xD9, n))
+            self._wp("B", 0xA0 + n)
+        elif n <= 0xFF:
+            self._wp(">BB", 0xD9, n)
         elif n <= 0xFFFF:
-            self._buffer.write(struct.pack(">BH", 0xDA, n))
-        elif n <= 0xFFFFFFFF:
-            self._buffer.write(struct.pack(">BI", 0xDB, n))
+            self._wp(">BH", 0xDA, n)
         else:
-            raise ValueError("Raw is too large")
+            self._wp(">BI", 0xDB, n)
 
     def _pack_bin_header(self, n):
-        if not self._use_bin_type:
-            return self._pack_raw_header(n)
-        elif n <= 0xFF:
-            return self._buffer.write(struct.pack(">BB", 0xC4, n))
+        if n <= 0xFF:
+            return self._wp(">BB", 0xC4, n)
         elif n <= 0xFFFF:
-            return self._buffer.write(struct.pack(">BH", 0xC5, n))
-        elif n <= 0xFFFFFFFF:
-            return self._buffer.write(struct.pack(">BI", 0xC6, n))
+            return self._wp(">BH", 0xC5, n)
         else:
-            raise ValueError("Bin is too large")
-
-    def bytes(self):
-        """Return internal buffer contents as bytes object"""
-        return self._buffer.getvalue()
+            return self._wp(">BI", 0xC6, n)
 
     def reset(self):
         """Reset internal buffer.
-
-        This method is useful only when autoreset=False.
         """
-        self._buffer = BytesIO()
-
-    def getbuffer(self):
-        """Return view of internal buffer."""
-        return self._buffer.getbuffer()
+        self._b_i = self._b_n = 0
+        self._bad = False
 
 def pack(o, stream, **kwargs):
     """

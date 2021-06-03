@@ -80,17 +80,9 @@ class UFuseClient:
         self.server = server
         self.sock = sock
         self.sock.setblocking(False)
-        self.buf = bytearray(128)
 
-        self.packer = Packer(
-            strict_types=False,
-            use_bin_type=True,
-        ).pack
-        self.unpacker = Unpacker(
-            strict_map_key=False,
-            raw=False,
-            use_list=False,
-        )
+        self.packer = Packer(writer=self.sock.send).pack
+        self.unpacker = Unpacker(reader=self.sock.readinto)
 
     def close(self):
         if self.sock is not None:
@@ -116,7 +108,7 @@ class UFuseClient:
 
     def _read(self, _):
         try:
-            d = self.sock.readinto(self.buf)
+            d = self.unpacker.read()
             if not d:
                 self.close()
                 return
@@ -124,7 +116,6 @@ class UFuseClient:
             self.close()
             raise
         else:
-            self.unpacker.feed(self.buf[:d])
             for msg in self.unpacker:
                 self._process(msg)
         self._sched = False
@@ -160,7 +151,7 @@ class UFuseClient:
         kw["a"] = a
         if d is not None:
             kw["d"] = d
-        self.sock.send(self.packer(kw))
+        self.packer(kw)
 
 
 class UFuse(IOBase):
