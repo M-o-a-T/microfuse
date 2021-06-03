@@ -58,6 +58,5 @@ class UPin:
         t = ticks_diff(ticks_ms(),self.on)-self.delay
         if self.topic:
             self.U.publish(self.topic, t, exp=self.exp)
-        print("PI",self.pin,t)
 
         self.on = None
