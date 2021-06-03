@@ -69,7 +69,7 @@ class Scheduler:
         try:
             _sched(self._run_, None)
         except Exception:
-            self._timer.init(mode=Timer.ONE_SHOT, period=1, callback=self._sched_run_)
+            self._timer.init(mode=_Timer.ONE_SHOT, period=1, callback=self._sched_run_)
 
     def cancel(self, event):
         # Remove an event from the queue.
