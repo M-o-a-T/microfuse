@@ -24,14 +24,23 @@ class UPin:
         self.topic = topic
         self.exp = exp
         self._sched = False
+        self._scan_ = self.U.sched.enter(self.delay*5,self._scan)
+
+    def _scan(self):
+        if self._sched:
+            self._irq()
+        self._scan_ = self.U.sched.enter(self.delay*5,self._scan)
 
     def _do_irq(self, _):
         if self._sched or self._dly is not None:
             return
         self._sched = True
-        _sched(self._irq_, None)
+        try:
+            _sched(self._irq_, None)
+        except RuntimeError:
+            self._sched = False # more luck next time?
 
-    def _irq(self,_):
+    def _irq(self, _=None):
         self._sched = False
         if self.on is None:
             self.on = ticks_ms()
