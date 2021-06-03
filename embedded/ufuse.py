@@ -75,7 +75,6 @@ def setup_conn(port, accept_handler):
     return listen_s
 
 class UFuseClient:
-    poll = None
     _sched = False
     def __init__(self, server, sock):
         self.server = server
@@ -102,12 +101,7 @@ class UFuseClient:
             self.server = None
 
     def start(self):
-        try:
-            self.sock.setsockopt(socket.SOL_SOCKET, 20, self._sched_read)
-        except TypeError:
-            self.poll = uselect.poll()
-            self.poll.register(self.sock,uselect.POLLIN)
-            print("No client auto read.")
+        self.sock.setsockopt(socket.SOL_SOCKET, 20, self._sched_read)
         self.send(a="h")
 
     def _sched_read(self, _):
@@ -118,8 +112,6 @@ class UFuseClient:
             schedule(self._read, _)
 
     def _read(self, _):
-        if self.poll is not None:
-            self.poll.poll()
         try:
             d = self.sock.readinto(self.buf)
             if not d:
