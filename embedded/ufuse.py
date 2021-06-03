@@ -195,6 +195,9 @@ class UFuse(IOBase):
             self.RTC = RTC()
 
         self.cons_buf = []
+        self.cons_wbuf = []
+        self._cons_s = False
+
         self._fd_cache = dict()
 
 
@@ -569,16 +572,34 @@ class UFuse(IOBase):
             self.cons_buf.insert(0, b"".join(b))
         return -errno.EAGAIN
 
-    def write(self, buf):
+    def _w_cons(self, _=None):
+        # sched task to send
+        b = self.cons_wbuf
+        self._cons_s = False
+        if not b:
+            return
+        self.cons_wbuf = []
         if self.client is not None:
-            self.client.send(a="c",d=buf)
+            b = b''.join(b)
+            self.client.send(a="c",d=b)
+
+    def write(self, buf):
+        # add to write buffer, schedule writer.
+        self.cons_wbuf.append(bytes(buf))
+        if not self._cons_s:
+            self._cons_s = True
+            try:
+                schedule(self._w_cons,None)
+            except RuntimeError:
+                # gah.
+                self._cons_s = False
 
     def ioctl(self, req,flags):
         if req == 3:  # poll
             if not self.cons_buf:
                 flags &=~ uselect.POLLIN
             return flags & (uselect.POLLIN|uselect.POLLOUT)
-        print("IOCTL",req,flags)
+        # print("IOCTL",req,flags)
         return -errno.EIO
 
     def use_console(self, repl_nr=0):
