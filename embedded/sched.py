@@ -36,13 +36,17 @@ class Scheduler:
         self._sched_run_ = self._sched_run
 
     def enter(self, _d_, _a_, *_a, **_kw):
-        # delay in ms, proc, *args, **kw.
-        q = self._queue
+        # usage: .enter(delay, proc, *args, **kw)
+        # usage: .enter(delay, event)
+        # delay in ms.
         t = ticks_ms()
-        event = Event(t + _d_, _a_, _a, _kw)
-        heapq.heappush(q, event)
+        if type(_a_) is Event:
+            _a_.time = t+_d_
+        else:
+            _a_ = Event(t + _d_, _a_, _a, _kw)
+        heapq.heappush(self._queue, _a_)
         self._set_timer(t)
-        return event
+        return _a_
 
     def cancel(self, event):
         # Remove an event from the queue.
