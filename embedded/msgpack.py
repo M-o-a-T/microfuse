@@ -306,9 +306,7 @@ class Unpacker(object):
                 ret[key] = self._unpack()
             return ret
         if typ == TYPE_RAW:
-            if isinstance(obj,memoryview):
-                obj = bytes(obj)
-            return obj.decode("utf_8")
+            return str(obj, "utf_8")
         if typ == TYPE_BIN:
             return bytes(obj)
         if typ == TYPE_EXT:
