@@ -358,7 +358,8 @@ class Multiplexer:
         with self.chat() as c:
             while True:
                 await anyio.sleep(self.watchdog)
-                await c.chat(a="p", w=True)
+                with anyio.fail_after(2):
+                    await c.chat(a="p", w=True)
 
     async def _serve_repl(self, repl, *, task_status):
         listener = await anyio.create_unix_listener(repl)
