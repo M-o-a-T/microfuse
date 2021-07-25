@@ -81,6 +81,8 @@ class REPL:
                 tg.start_soon(self._writer)
                 if task_status:
                     task_status.started()
+                pass # A
+            pass # B
         finally:
             with anyio.move_on_after(2, shield=True):
                 await self.sock.aclose()
@@ -142,10 +144,7 @@ class Stream:
 
     async def _reader(self):
         while True:
-            try:
-                d = await self.sock.receive()
-            except anyio.EndOfStream:
-                return
+            d = await self.sock.receive()
             self.unpacker.feed(d)
             for msg in self.unpacker:
                 await self._process(msg)
@@ -280,10 +279,11 @@ class Multiplexer:
                                 await self.send(a="m", p=nr, d=msg.data, w=w)
                             else:
                                 await self.send(a="m", p=nr, d=msg.data)
-                        except Exception:
-                            logger.exception("Received from %r", msg)
+                        except Exception as exc:
+                            logger.exception("Received from %r: %r", msg, exc)
 
-            except Exception:
+            except Exception as exc:
+                logger.exception("SubscribeLoop: %r", exc)
                 await self.send(a="mu", p=nr)
             finally:
                 try:
@@ -431,8 +431,9 @@ class Multiplexer:
             await self.sock.send(self.packer(kw))
 
     async def _conn_init(self, *, task_status):
-        await self.send(a="h", d="multiplex")
-        await self.h_evt.wait()
+        with anyio.fail_after(2):
+            await self.send(a="h", d="multiplex")
+            await self.h_evt.wait()
         task_status.started()
 
     async def _conn(self, *, task_status):
@@ -463,8 +464,8 @@ class Multiplexer:
             try:
                 with anyio.fail_after(0.1):
                     await c.send(msg)
-            except Exception:
-                logger.warning("Blocked REPL %r", c)
+            except Exception as exc:
+                logger.warning("End REPL %r %r", c, exc)
                 c.close()
 
     async def _process(self, msg):
@@ -474,7 +475,7 @@ class Multiplexer:
             cmd = getattr(self, "cmd_" + a)
         except AttributeError:
             logger.warning("Incoming unknown message: a=%r %r", a, msg)
-            await self.send(a="e", i=msg.get('i'), d='?')
+            await self.send(a="e", i=msg.get('i'), d='?a')
         else:
             try:
                 d = await cmd(**msg)
@@ -488,7 +489,6 @@ class Multiplexer:
                     await self.send(a="r", i=i, d=d)
 
     async def cmd_h(self, d=None, **_kw):
-        print("Hello:", d)
         self.h_evt.set()
 
     async def cmd_p(self, d=None, **_kw):
@@ -502,8 +502,8 @@ class Multiplexer:
                 sid, seq = self.mseq.pop(i)
                 rstream = self.streams[sid]
                 await rstream.send(a=_cmd, i=seq, d=d, **kw)
-            except Exception:
-                logger.exception("Could not handle reply: %r %r %r", i, d, kw)
+            except Exception as exc:
+                logger.exception("Could not handle reply: %r %r %r: %r", i, d, kw, exc)
 
         return IsHandled
 
@@ -522,6 +522,7 @@ class Multiplexer:
         """console closed"""
         for r in self.repls:
             r.close(True)
+        raise EOFError
 
     # Messaging
 
