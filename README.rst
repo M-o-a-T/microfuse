@@ -24,16 +24,11 @@ TODO
 
 * OTA updates.
 
-* File system commands from the command line / an async Python program.
+* set RTC time
 
-* The msgpack implementation needs improvement; it is crazy inefficient.
-  Sending a console line *should* eat 50 bytes (one three-element dict to be
-  transmitted) or zero bytes (if we hand-roll the message), not 1700.
+* support persistent storage in RTC
+
+* File system commands from the command line and/or from an async Python program.
 
 * There is not yet any attempt at reconnecting. (Should there be?)
 
-* There are occasional MicroPython crashes::
-
-      assertion "ATB_GET_KIND(block) == AT_HEAD" failed: file "…/micropython/py/gc.c", line 591, function: gc_free
-
-  This definitely looks like a MicroPython bug. The problem might be related to bytearray slicing.

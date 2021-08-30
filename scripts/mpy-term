@@ -1,11 +1,13 @@
 #!/usr/bin/python3
 # EASY-INSTALL-ENTRY-SCRIPT: 'pyserial==3.5b0','console_scripts','pyserial-miniterm'
-import re
 import os
+import re
 import sys
+
 import click
 
 from microfuse.term import Miniterm, ask_for_port, key_description
+
 
 # - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 # default args can be used to override when calling main() from an other script
@@ -58,7 +60,7 @@ def main(port, ask, echo, encoding, filter, eol, raw, exit_char, menu_char, quie
                 p = os.path.join(os.environ["XDG_RUNTIME_DIR"], port)
                 if p == port:
                     raise
-                s = os.stat(port)
+                s = os.stat(p)
                 port = p
 
         except FileNotFoundError:

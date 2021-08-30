@@ -3,12 +3,13 @@ try:
 except ImportError:
     network = None
 
-from msgpack import Packer, Unpacker
-from time import sleep
-import socket
-import uselect
-import uos
 import errno
+import socket
+from time import sleep
+
+import uos
+import uselect
+from msgpack import Packer, Unpacker
 from uio import IOBase
 
 try:
@@ -74,22 +75,14 @@ def setup_conn(port, accept_handler):
     return listen_s
 
 class UFuseClient:
-    poll = None
+    _sched = False
     def __init__(self, server, sock):
         self.server = server
         self.sock = sock
         self.sock.setblocking(False)
-        self.buf = bytearray(128)
 
-        self.packer = Packer(
-            strict_types=False,
-            use_bin_type=True,
-        ).pack
-        self.unpacker = Unpacker(
-            strict_map_key=False,
-            raw=False,
-            use_list=False,
-        )
+        self.packer = Packer(writer=self.sock.send).pack
+        self.unpacker = Unpacker(reader=self.sock.readinto)
 
     def close(self):
         if self.sock is not None:
@@ -100,24 +93,22 @@ class UFuseClient:
             self.server = None
 
     def start(self):
-        try:
-            self.sock.setsockopt(socket.SOL_SOCKET, 20, self._sched_read)
-        except TypeError:
-            self.poll = uselect.poll()
-            self.poll.register(sock,uselect.POLLIN)
-            print("No client auto read.")
+        self.sock.setsockopt(socket.SOL_SOCKET, 20, self._sched_read)
         self.send(a="h")
 
     def _sched_read(self, _):
         # defer to a scheduled task so that the reader isn't itself
         # interrupted when "dupterm_notify" processes a keyboard interrupt
-        schedule(self._read, _)
+        if not self._sched:
+            self._sched = True
+            try:
+                schedule(self._read, _)
+            except RuntimeError:
+                self._sched = False
 
     def _read(self, _):
-        if self.poll is not None:
-            self.poll.poll()
         try:
-            d = self.sock.readinto(self.buf)
+            d = self.unpacker.read()
             if not d:
                 self.close()
                 return
@@ -125,9 +116,9 @@ class UFuseClient:
             self.close()
             raise
         else:
-            self.unpacker.feed(self.buf[:d])
             for msg in self.unpacker:
                 self._process(msg)
+        self._sched = False
 
     def _process(self, msg):
         if 'a' not in msg:
@@ -160,7 +151,7 @@ class UFuseClient:
         kw["a"] = a
         if d is not None:
             kw["d"] = d
-        self.sock.send(self.packer(kw))
+        self.packer(kw)
 
 
 class UFuse(IOBase):
@@ -195,6 +186,9 @@ class UFuse(IOBase):
             self.RTC = RTC()
 
         self.cons_buf = []
+        self.cons_wbuf = []
+        self._cons_s = False
+
         self._fd_cache = dict()
 
 
@@ -569,16 +563,34 @@ class UFuse(IOBase):
             self.cons_buf.insert(0, b"".join(b))
         return -errno.EAGAIN
 
-    def write(self, buf):
+    def _w_cons(self, _=None):
+        # sched task to send
+        b = self.cons_wbuf
+        self._cons_s = False
+        if not b:
+            return
+        self.cons_wbuf = []
         if self.client is not None:
-            self.client.send(a="c",d=buf)
+            b = b''.join(b)
+            self.client.send(a="c",d=b)
+
+    def write(self, buf):
+        # add to write buffer, schedule writer.
+        self.cons_wbuf.append(bytes(buf))
+        if not self._cons_s:
+            self._cons_s = True
+            try:
+                schedule(self._w_cons,None)
+            except RuntimeError:
+                # gah.
+                self._cons_s = False
 
     def ioctl(self, req,flags):
         if req == 3:  # poll
             if not self.cons_buf:
                 flags &=~ uselect.POLLIN
             return flags & (uselect.POLLIN|uselect.POLLOUT)
-        print("IOCTL",req,flags)
+        # print("IOCTL",req,flags)
         return -errno.EIO
 
     def use_console(self, repl_nr=0):

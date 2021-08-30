@@ -1,18 +1,20 @@
 #!/usr/bin/python3
 
-import anyio
-from anyio.streams.text import TextReceiveStream
-from tempfile import TemporaryDirectory
+import logging
 import os
-from pathlib import Path
 import subprocess
 import sys
-import asyncclick as click
 from contextlib import contextmanager
+from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from microfuse.multiplex import Multiplexer
+import anyio
+import asyncclick as click
+from anyio.streams.text import TextReceiveStream
+
 from microfuse.link import Link
-import logging
+from microfuse.multiplex import Multiplexer
+
 logger = logging.getLogger(__name__)
 
 click.anyio_backend="trio"
@@ -37,15 +39,25 @@ async def grab_stderr(proc, args):
         raise ExecError(res, args)
 
 async def build_lib(dst,src, libs,no_mpy,verbose):
-    args = ["../smurf-upy/cp.sh","-a","x64","-mcache-lookup-bc","-l","./embedded"]
-    for l in libs:
-        args.extend(["-l",l])
-    if no_mpy:
-        args.append("-n")
-    args.extend([src,dst])
-    if verbose:
-        print("Starting:",args)
-    await anyio.run_process(args, input=b"", stdout=sys.stdout, stderr=sys.stderr)
+    if False:
+        args = ["../smurf-upy/cp.sh","-a","x64","-mcache-lookup-bc","-l","./embedded"]
+        for l in libs:
+            args.extend(["-l",l])
+        if no_mpy:
+            args.append("-n")
+        args.extend([src,dst])
+        if verbose:
+            print("Starting:",args)
+        await anyio.run_process(args, input=b"", stdout=sys.stdout, stderr=sys.stderr)
+    else:
+        import shutil
+        s = Path(src)
+        for f in os.listdir(s):
+            shutil.copyfile(s/ f,dst / f)
+        e = Path("embedded")
+        for f in os.listdir(e):
+            shutil.copyfile(e / f,dst / f)
+
 
 async def uclient(lib,verbose, *, task_status):
     args = ['env','MICROPYPATH=%s'%(lib,), 'micropython','test/client_unix.py']

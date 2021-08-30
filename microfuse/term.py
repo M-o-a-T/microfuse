@@ -3,7 +3,7 @@
 # Very simple serial terminal
 #
 # (c) 2021 Matthias Urlichs <matthias@urlichs.de>
-# 
+#
 # Part of this file is copied from pySerial.
 # https://github.com/pyserial/pyserial (C)2002-2020 Chris Liechti
 # <cliechti@gmx.net>
@@ -14,27 +14,30 @@ from __future__ import absolute_import
 
 import codecs
 import os
+import socket
+import stat
 import sys
 import threading
-import stat
-import socket
 
-from serial.tools.list_ports import comports
 from serial.tools import hexlify_codec
 
 # pylint: disable=wrong-import-order,wrong-import-position
 
 codecs.register(lambda c: hexlify_codec.getregentry() if c == 'hexlify' else None)
 
-from serial.tools.miniterm import key_description, Console, CRLF, CR, LF
-from serial.tools.miniterm import NoTerminal, NoControls, Printable, Colorize, DebugIO
-from serial.tools.miniterm import EOL_TRANSFORMATIONS, TRANSFORMATIONS
+from serial.tools.miniterm import (
+    EOL_TRANSFORMATIONS,
+    TRANSFORMATIONS,
+    Console,
+    key_description,
+)
+
 
 def comports(d):
     for f in os.listdir(d):
         if f[0] == ".":
             continue
-        f = os.path.join(d,f)
+        f = os.path.join(d, f)
         s = os.stat(f)
         if stat.S_ISSOCK(s.st_mode):
             yield f
@@ -91,6 +94,9 @@ class Miniterm(object):
     """
 
     socket = None
+    transmitter_thread = None
+    rx_decoder = None
+    tx_decoder = None
 
     def __init__(self, socketname, echo=False, eol='crlf', filters=()):
         self.console = Console()
@@ -102,13 +108,13 @@ class Miniterm(object):
         self.eol = eol
         self.filters = filters
         self.update_transformations()
-        self.exit_character = chr(0x1d)  # GS/CTRL+]
+        self.exit_character = chr(0x1D)  # GS/CTRL+]
         self.menu_character = chr(0x14)  # Menu: CTRL+T
         self.alive = None
         self._reader_alive = None
         self.receiver_thread = None
         self.rx_decoder = None
-        self.tx_decoder = None
+        self.tx_encoder = None
 
     def _start_reader(self):
         """Start reader thread"""
@@ -155,8 +161,9 @@ class Miniterm(object):
 
     def update_transformations(self):
         """take list of transformation classes and instantiate them for rx and tx"""
-        transformations = [EOL_TRANSFORMATIONS[self.eol]] + [TRANSFORMATIONS[f]
-                                                             for f in self.filters]
+        transformations = [EOL_TRANSFORMATIONS[self.eol]] + [
+            TRANSFORMATIONS[f] for f in self.filters
+        ]
         self.tx_transformations = [t() for t in transformations]
         self.rx_transformations = list(reversed(self.tx_transformations))
 
@@ -195,7 +202,7 @@ class Miniterm(object):
         except Exception:
             self.alive = False
             self.console.cancel()
-            raise       # XXX handle instead of re-raise?
+            raise  # XXX handle instead of re-raise?
 
     def writer(self):
         """\
@@ -216,12 +223,12 @@ class Miniterm(object):
                     self.handle_menu_key(c)
                     menu_active = False
                 elif c == self.menu_character:
-                    menu_active = True      # next char will be for menu
+                    menu_active = True  # next char will be for menu
                 elif c == self.exit_character:
-                    self.stop()             # exit app
+                    self.stop()  # exit app
                     break
                 else:
-                    #~ if self.raw:
+                    # ~ if self.raw:
                     text = c
                     for transformation in self.tx_transformations:
                         text = transformation.tx(text)
@@ -231,7 +238,7 @@ class Miniterm(object):
                         for transformation in self.tx_transformations:
                             echo_text = transformation.echo(echo_text)
                         self.console.write(echo_text)
-        except:
+        except BaseException:
             self.alive = False
             raise
 
@@ -242,37 +249,35 @@ class Miniterm(object):
             self.socket.sendall(self.tx_encoder.encode(c))
             if self.echo:
                 self.console.write(c)
-        elif c == '\x15':                       # CTRL+U -> upload file
+        elif c == '\x15':  # CTRL+U -> upload file
             self.upload_file()
-        elif c in '\x08hH?':                    # CTRL+H, h, H, ? -> Show help
+        elif c in '\x08hH?':  # CTRL+H, h, H, ? -> Show help
             sys.stderr.write(self.get_help_text())
-        elif c == '\x05':                       # CTRL+E -> toggle local echo
+        elif c == '\x05':  # CTRL+E -> toggle local echo
             self.echo = not self.echo
-            sys.stderr.write('--- local echo {} ---\n'.format('active' if self.echo else 'inactive'))
-        elif c == '\x06':                       # CTRL+F -> edit filters
+            sys.stderr.write(
+                '--- local echo {} ---\n'.format('active' if self.echo else 'inactive')
+            )
+        elif c == '\x06':  # CTRL+F -> edit filters
             self.change_filter()
-        elif c == '\x0c':                       # CTRL+L -> EOL mode
-            modes = list(EOL_TRANSFORMATIONS)   # keys
+        elif c == '\x0c':  # CTRL+L -> EOL mode
+            modes = list(EOL_TRANSFORMATIONS)  # keys
             eol = modes.index(self.eol) + 1
             if eol >= len(modes):
                 eol = 0
             self.eol = modes[eol]
             sys.stderr.write('--- EOL: {} ---\n'.format(self.eol.upper()))
             self.update_transformations()
-        elif c == '\x01':                       # CTRL+A -> set encoding
+        elif c == '\x01':  # CTRL+A -> set encoding
             self.change_encoding()
-        elif c == '\x09':                       # CTRL+I -> info
+        elif c == '\x09':  # CTRL+I -> info
             self.dump_port_settings()
-        #~ elif c == '\x01':                       # CTRL+A -> cycle escape mode
-        #~ elif c == '\x0c':                       # CTRL+L -> cycle linefeed mode
-        elif c in 'pP':                         # P -> change port
+        # ~ elif c == '\x01':                       # CTRL+A -> cycle escape mode
+        # ~ elif c == '\x0c':                       # CTRL+L -> cycle linefeed mode
+        elif c in 'pP':  # P -> change port
             self.change_port()
-        elif c in 'zZ':                         # S -> suspend / open port temporarily
-            self.suspend_port()
-        elif c in 'bB':                         # B -> change baudrate
-            self.change_baudrate()
         elif c in 'qQ':
-            self.stop()                         # Q -> exit app
+            self.stop()  # Q -> exit app
         else:
             sys.stderr.write('--- unknown menu character {} --\n'.format(key_description(c)))
 
@@ -292,7 +297,7 @@ class Miniterm(object):
                                 break
                             self.socket.sendall(block)
                             # Wait for output buffer to drain.
-                            sys.stderr.write('.')   # Progress indicator.
+                            sys.stderr.write('.')  # Progress indicator.
                     sys.stderr.write('\n--- File {} sent ---\n'.format(filename))
                 except IOError as e:
                     sys.stderr.write('--- ERROR opening file {}: {} ---\n'.format(filename, e))
@@ -300,9 +305,12 @@ class Miniterm(object):
     def change_filter(self):
         """change the i/o transformations"""
         sys.stderr.write('\n--- Available Filters:\n')
-        sys.stderr.write('\n'.join(
-            '---   {:<10} = {.__doc__}'.format(k, v)
-            for k, v in sorted(TRANSFORMATIONS.items())))
+        sys.stderr.write(
+            '\n'.join(
+                '---   {:<10} = {.__doc__}'.format(k, v)
+                for k, v in sorted(TRANSFORMATIONS.items())
+            )
+        )
         sys.stderr.write('\n--- Enter new filter name(s) [{}]: '.format(' '.join(self.filters)))
         with self.console:
             new_filters = sys.stdin.readline().lower().split()
@@ -366,14 +374,13 @@ class Miniterm(object):
 ---
 --- Port settings ({menu} followed by the following):
 ---    p          change port
-""".format(exit=key_description(self.exit_character),
-           menu=key_description(self.menu_character),
-           rts=key_description('\x12'),
-           dtr=key_description('\x04'),
-           echo=key_description('\x05'),
-           info=key_description('\x09'),
-           upload=key_description('\x15'),
-           repr=key_description('\x01'),
-           filter=key_description('\x06'),
-           eol=key_description('\x0c'))
-
+""".format(
+            exit=key_description(self.exit_character),
+            menu=key_description(self.menu_character),
+            echo=key_description('\x05'),
+            info=key_description('\x09'),
+            upload=key_description('\x15'),
+            repr=key_description('\x01'),
+            filter=key_description('\x06'),
+            eol=key_description('\x0c'),
+        )

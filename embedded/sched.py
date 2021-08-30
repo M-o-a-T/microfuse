@@ -6,18 +6,25 @@
 # Unlike the standard sched class there's no priority, no runner
 # function, and no locking.
 
-from time import ticks_ms, ticks_diff
 import heapq
 from collections import namedtuple
+from time import ticks_diff, ticks_ms
+
 from machine import Timer as _Timer
 from micropython import schedule as _sched
+
 
 def _cmp(s,o):
 #   if s.time == o.time:
 #       return s.priority - o.priority
     return ticks_diff(s.time, o.time)
 
-class Event(namedtuple('Event', 'time action argument kwargs')):
+class Event:
+    def __init__(self, time, action, a, kw):
+        self.time = time
+        self.action = action
+        self.a = a
+        self.kw = kw
     def __eq__(s, o): return _cmp(s,o) == 0
     def __lt__(s, o): return _cmp(s,o) < 0
     def __le__(s, o): return _cmp(s,o) <= 0
@@ -34,13 +41,17 @@ class Scheduler:
         self._sched_run_ = self._sched_run
 
     def enter(self, _d_, _a_, *_a, **_kw):
-        # delay in ms, proc, *args, **kw.
-        q = self._queue
+        # usage: .enter(delay, proc, *args, **kw)
+        # usage: .enter(delay, event)
+        # delay in ms.
         t = ticks_ms()
-        event = Event(t + _d_, _a_, _a, _kw)
-        heapq.heappush(q, event)
+        if type(_a_) is Event:
+            _a_.time = t+_d_
+        else:
+            _a_ = Event(t + _d_, _a_, _a, _kw)
+        heapq.heappush(self._queue, _a_)
         self._set_timer(t)
-        return event
+        return _a_
 
     def cancel(self, event):
         # Remove an event from the queue.
@@ -66,8 +77,8 @@ class Scheduler:
         # runs in IRQ.
         try:
             _sched(self._run_, None)
-        except Exception:
-            self._timer.init(mode=Timer.ONE_SHOT, period=1, callback=self._sched_run_)
+        except RuntimeError:
+            self._timer.init(mode=_Timer.ONE_SHOT, period=1, callback=self._sched_run_)
 
     def cancel(self, event):
         # Remove an event from the queue.
@@ -85,13 +96,13 @@ class Scheduler:
             q = self._queue
             pop = heapq.heappop
             while q:
-                t, action, argument, kwargs = q[0]
+                e = q[0]
                 now = ticks_ms()
-                if ticks_diff(t,now) > 0:
+                if ticks_diff(e.time, now) > 0:
                     break
                 else:
                     pop(q)
-                    action(*argument, **kwargs)
+                    e.action(*e.a, **e.kw)
         finally:
             self._running = False
             self._set_timer()

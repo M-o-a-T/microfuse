@@ -1,24 +1,28 @@
 #!/usr/bin/python3
 
-import anyio
-from .util import packer,stream_unpacker, ValueEvent
-import errno
-from distmqtt.client import open_mqttclient
-from contextlib import asynccontextmanager, contextmanager
-from concurrent.futures import CancelledError
-import sys
-import os
-
 import logging
+import os
+from concurrent.futures import CancelledError
+from contextlib import asynccontextmanager, contextmanager
+
+import anyio
+from distmqtt.client import open_mqttclient
+
+from .link import ServerError
+from .util import ValueEvent, packer, stream_unpacker
+
 logger = logging.getLogger(__name__)
+
 
 class IsHandled:
     pass
+
 
 async def handle_repl(client):
     async with client:
         name = await client.receive(1024)
         await client.send(b'Hello, %s\n' % name)
+
 
 class ChatObj:
     """Local messaging"""
@@ -33,7 +37,7 @@ class ChatObj:
         self._next_id += 1
         cid = self._next_id
         evt = ValueEvent()
-        self.ids[cid] = (evt,complete_msg)
+        self.ids[cid] = (evt, complete_msg)
         await self.server.submit(self, kw, cid)
         return await evt.get()
 
@@ -43,8 +47,8 @@ class ChatObj:
 
     async def send(self, **kw):
         """called by the server with an incoming reply"""
-        a=kw.get('a')
-        evt,cm = self.ids.pop(kw.get('i'))
+        a = kw.get('a')
+        evt, cm = self.ids.pop(kw.get('i'))
         if a == "r":
             evt.set(kw if cm else kw.get('d'))
         elif a == "e":
@@ -54,20 +58,31 @@ class ChatObj:
 
 
 class REPL:
+    """
+    This class connects the multiplexer to a REPL client.
+
+    The data stream consists of bytes from/to the MicroPython REPL.
+    """
+
+    _close = None
     _close_ind = False
+
     def __init__(self, mplex, sock):
         self.mplex = mplex
         self.sock = sock
-        self.out_w,self.out_r = anyio.create_memory_object_stream(5)
+        self.out_w, self.out_r = anyio.create_memory_object_stream(5)
 
-    async def run(self,*,task_status=None):
+    async def run(self, *, task_status=None):
         try:
             await self.mplex.send(a="ci", d=self.mplex.repl_nr)
             async with anyio.create_task_group() as tg:
                 self._close = tg.cancel_scope
                 tg.start_soon(self._reader)
                 tg.start_soon(self._writer)
-                if task_status: task_status.started()
+                if task_status:
+                    task_status.started()
+                pass # A
+            pass # B
         finally:
             with anyio.move_on_after(2, shield=True):
                 await self.sock.aclose()
@@ -80,9 +95,8 @@ class REPL:
         write repl data to the socket
         """
         while True:
-            async for d in self.out_r:
+            async for d in self.out_r:  # pylint: disable=E1133
                 await self.sock.send(d)
-
 
     async def _reader(self):
         """
@@ -90,7 +104,7 @@ class REPL:
         """
         while True:
             d = await self.sock.receive()
-            await self.mplex.send(a="c",d=d)
+            await self.mplex.send(a="c", d=d)
 
     async def send(self, data):
         await self.out_w.send(data)
@@ -101,6 +115,14 @@ class REPL:
 
 
 class Stream:
+    """
+    This class connects the multiplexer to a command client.
+
+    The data stream consists of MsgPack messages.
+    """
+
+    _close = None
+
     def __init__(self, mplex, sock):
         self.mplex = mplex
         self.sock = sock
@@ -122,10 +144,7 @@ class Stream:
 
     async def _reader(self):
         while True:
-            try:
-                d = await self.sock.receive()
-            except anyio.EndOfStream:
-                return
+            d = await self.sock.receive()
             self.unpacker.feed(d)
             for msg in self.unpacker:
                 await self._process(msg)
@@ -135,8 +154,7 @@ class Stream:
             logger.warning("Incoming unknown action: %r", msg)
             return
         seq = msg.pop('i', None)
-        await self.mplex.submit(self,msg,seq)
-
+        await self.mplex.submit(self, msg, seq)
 
     async def send(self, **kw):
         async with self._send_lock:
@@ -155,13 +173,24 @@ class Multiplexer:
     Unix socket paths are relative to XDG_RUNTIME_DIR if they don't contain a
     slash.
     """
+
     sock = None
     _cancel = None
     _tg = None
     mqtt = None
 
-    def __init__(self, host,port, repl, stream, retry=0, mqtt=None, repl_nr=0,
-            multiplex=False, watchdog=None):
+    def __init__(
+        self,
+        host,
+        port,
+        repl,
+        stream,
+        retry=0,
+        mqtt=None,
+        repl_nr=0,
+        multiplex=False,
+        watchdog=None,
+    ):
         """
         Set up a MicroPython multiplexer.
         """
@@ -172,16 +201,16 @@ class Multiplexer:
         except KeyError:
             pass
         else:
-            stream = os.path.join(rundir,stream)
-            repl = os.path.join(rundir,repl)
+            stream = os.path.join(rundir, stream)
+            repl = os.path.join(rundir, repl)
 
         self.stream_path = stream
         self.repl_path = repl
         self.repl_nr = repl_nr
         self.repl_multiplex = multiplex
         self.repls = set()
-        self.streams = dict() # streamID > Stream
-        self.mseq = dict() # nr > streamID,seq
+        self.streams = dict()  # streamID > Stream
+        self.mseq = dict()  # nr > streamID,seq
         self._send_lock = anyio.Lock()
         self.retry = retry
         self.h_evt = anyio.Event()
@@ -214,7 +243,9 @@ class Multiplexer:
 
         This is a subtask.
         """
-        if isinstance(topic,str):
+        if self.mqtt is None:
+            return
+        if isinstance(topic, str):
             topic = topic.split("/")
         spl = '#' in topic or '+' in topic
         codec = None if raw else "msgpack"
@@ -222,11 +253,11 @@ class Multiplexer:
             if nr is None:
                 self.next_sub += 2
                 nr = self.next_sub
-                await self.send(a="ms",p=nr,d=topic)
+                await self.send(a="ms", p=nr, d=topic)
             task_status.started(nr)
             try:
                 with anyio.CancelScope() as cs:
-                    self.subs[nr] = (topic,codec,cs)
+                    self.subs[nr] = (topic, codec, cs)
                     async for msg in sub:
                         try:
                             if spl:
@@ -240,25 +271,27 @@ class Multiplexer:
                                         w.extend(rt)
                                         break
                                     elif k != rt[0]:
-                                        logger.warning("Strange topic: %r vs %r", msg.topic,"/".join(topic))
+                                        logger.warning(
+                                            "Strange topic: %r vs %r", msg.topic, "/".join(topic)
+                                        )
                                         continue
                                     rt = rt[1:]
-                                await self.send(a="m",p=nr,d=msg.data,w=w)
+                                await self.send(a="m", p=nr, d=msg.data, w=w)
                             else:
-                                await self.send(a="m",p=nr,d=msg.data)
-                        except Exception:
-                            logger.exception("Received from %r", msg)
+                                await self.send(a="m", p=nr, d=msg.data)
+                        except Exception as exc:
+                            logger.exception("Received from %r: %r", msg, exc)
 
-            except Exception:
-                await self.send(a="mu",p=nr)
+            except Exception as exc:
+                logger.exception("SubscribeLoop: %r", exc)
+                await self.send(a="mu", p=nr)
             finally:
                 try:
                     del self.subs[nr]
                 except KeyError:
                     pass
 
-
-    async def run(self,*,task_status=None):
+    async def run(self, *, task_status=None):
         async with self._mqtt(), anyio.create_task_group() as tg:
             self._tg = tg
             self._cancel = tg.cancel_scope
@@ -300,16 +333,16 @@ class Multiplexer:
             print("Done.")
 
     async def aclose(self):
-        for mid,se in self.mseq.values():
-            sid,seq = se
+        for _, se in self.mseq.values():
+            sid, seq = se
             rstream = self.streams[sid]
-            msg=dict(a="e",d="closed",i=seq)
+            msg = dict(a="e", d="closed", i=seq)
 
             try:
-                with anyio.fail_after(2,shield=True):
+                with anyio.fail_after(2, shield=True):
                     await rstream.send(**msg)
-            except Exception as exc:
-                logger.exception("Closing: Could not send %r to %r", msg,rstream)
+            except Exception:
+                logger.exception("Closing: Could not send %r to %r", msg, rstream)
                 await rstream.aclose()
             except BaseException:
                 await rstream.aclose()
@@ -320,12 +353,13 @@ class Multiplexer:
             self._cancel = None
 
     async def _watchdog(self, *, task_status):
-        await self.send(a="hw",d=self.watchdog*2.2)
+        await self.send(a="hw", d=self.watchdog * 2.2)
         task_status.started()
         with self.chat() as c:
             while True:
                 await anyio.sleep(self.watchdog)
-                await c.chat(a="p",w=True)
+                with anyio.fail_after(2):
+                    await c.chat(a="p", w=True)
 
     async def _serve_repl(self, repl, *, task_status):
         listener = await anyio.create_unix_listener(repl)
@@ -340,7 +374,7 @@ class Multiplexer:
         await listener.serve(self._handle_stream)
 
     async def _handle_repl(self, sock):
-        repl = REPL(self,sock)
+        repl = REPL(self, sock)
         self.repls.add(repl)
         try:
             await repl.run()
@@ -364,7 +398,7 @@ class Multiplexer:
             del self.streams[sid]
 
     async def _handle_stream(self, sock):
-        stream = Stream(self,sock)
+        stream = Stream(self, sock)
         with self._attached(stream):
             try:
                 await stream.run()
@@ -373,7 +407,7 @@ class Multiplexer:
             except Exception as e:
                 logger.exception("Stream Crash")
                 try:
-                    await stream.send(a='e',d=repr(e))
+                    await stream.send(a='e', d=repr(e))
                 except Exception:
                     pass
 
@@ -391,19 +425,20 @@ class Multiplexer:
         Send a message to the embedded device
         """
         async with self._send_lock:
-            print("M SEND",kw)
+            print("M SEND", kw)
             if self.sock is None:
                 raise EOFError
             await self.sock.send(self.packer(kw))
 
     async def _conn_init(self, *, task_status):
-        await self.send(a="h",d="multiplex")
-        await self.h_evt.wait()
+        with anyio.fail_after(2):
+            await self.send(a="h", d="multiplex")
+            await self.h_evt.wait()
         task_status.started()
 
     async def _conn(self, *, task_status):
         try:
-            async with await anyio.connect_tcp(self.host,self.port) as sock:
+            async with await anyio.connect_tcp(self.host, self.port) as sock:
                 self.sock = sock
                 task_status.started()
                 await self._reader()
@@ -415,49 +450,48 @@ class Multiplexer:
             d = await self.sock.receive()
             self.unpacker.feed(d)
             for msg in self.unpacker:
-                print("M RECV",msg)
+                print("M RECV", msg)
                 await self._process(msg)
 
     async def submit(self, serv, msg, seq):
         self.next_mid += 1
         mid = self.next_mid
-        self.mseq[mid] = (serv._mplex_sid,seq)
-        await self.send(i=mid,**msg)
+        self.mseq[mid] = (serv._mplex_sid, seq)
+        await self.send(i=mid, **msg)
 
     async def _to_repl(self, msg):
         for c in list(self.repls):
             try:
                 with anyio.fail_after(0.1):
                     await c.send(msg)
-            except Exception:
-                logger.warning("Blocked REPL %r", c)
+            except Exception as exc:
+                logger.warning("End REPL %r %r", c, exc)
                 c.close()
 
     async def _process(self, msg):
-        a = msg.pop('a','')
+        a = msg.pop('a', '')
 
         try:
-            cmd = getattr(self,"cmd_"+a)
+            cmd = getattr(self, "cmd_" + a)
         except AttributeError:
-            logger.warning("Incoming unknown message: a=%r %r", a,msg)
-            await self.send(a="e",i=msg.get('i'),d='?')
+            logger.warning("Incoming unknown message: a=%r %r", a, msg)
+            await self.send(a="e", i=msg.get('i'), d='?a')
         else:
             try:
                 d = await cmd(**msg)
             except Exception as e:
-                logger.exception("Oops %r",msg)
+                logger.exception("Oops %r", msg)
                 if a != 'e':
-                    await self.send(a="e",i=msg.get('i'),d=repr(type(e)))
+                    await self.send(a="e", i=msg.get('i'), d=repr(type(e)))
             else:
                 i = msg.get('i')
                 if (d is not None or i is not None) and d is not IsHandled:
                     await self.send(a="r", i=i, d=d)
 
-    async def cmd_h(self, d=None, **kw):
-        print("Hello:",d)
+    async def cmd_h(self, d=None, **_kw):
         self.h_evt.set()
 
-    async def cmd_p(self, d=None, **kw):
+    async def cmd_p(self, d=None, **_kw):
         return d
 
     async def cmd_r(self, d=None, i=None, _cmd='r', **kw):
@@ -465,11 +499,11 @@ class Multiplexer:
             logger.info("Reply: %r %r", d, kw)
         else:
             try:
-                sid,seq = self.mseq.pop(i)
+                sid, seq = self.mseq.pop(i)
                 rstream = self.streams[sid]
-                await rstream.send(a=_cmd,i=seq,d=d,**kw)
+                await rstream.send(a=_cmd, i=seq, d=d, **kw)
             except Exception as exc:
-                logger.exception("Could not handle reply: %r %r %r", i,d,kw)
+                logger.exception("Could not handle reply: %r %r %r: %r", i, d, kw, exc)
 
         return IsHandled
 
@@ -477,28 +511,29 @@ class Multiplexer:
         await self.cmd_r(_cmd='e', **kw)
         return IsHandled
 
-
     # REPL / Console
 
-    async def cmd_c(self, d, **kw):
+    async def cmd_c(self, d, **_kw):
         """console data"""
         for r in self.repls:
             await r.send(d)
 
-    async def cmd_cx(self, **kw):
+    async def cmd_cx(self, **_kw):
         """console closed"""
         for r in self.repls:
             r.close(True)
-
+        raise EOFError
 
     # Messaging
 
-    async def cmd_m(self, p, d=None, w=(), r=False, **kw):
-        if isinstance(p,int):
-            p,c,_ = self.subs[p]
+    async def cmd_m(self, p, d=None, w=(), r=False, **_kw):
+        if self.mqtt is None:
+            return
+        if isinstance(p, int):
+            p, c, _ = self.subs[p]
         else:
             c = None if r else "msgpack"
-        if isinstance(p,str):
+        if isinstance(p, str):
             p = p.split("/")
         if w:
             pr = []
@@ -511,14 +546,18 @@ class Multiplexer:
                     break
                 pr.append(k)
             p = pr
-        await self.mqtt.publish(p,d,codec=c)
-        
-    async def cmd_ms(self, d, p, r=False, **kw):
-        if isinstance(d,str):
+        await self.mqtt.publish(p, d, codec=c)
+
+
+    async def cmd_ms(self, d, p, r=False, **_kw):
+        if isinstance(d, str):
             d = d.split("/")
         await self._tg.start(self.subscribed_mqtt, d, r, p)
 
-    async def cmd_mu(self, p, **kw):
-        _,_,c = self.subs[p]
-        c.cancel()
-
+    async def cmd_mu(self, p, **_kw):
+        try:
+            _, _, c = self.subs[p]
+        except KeyError:
+            pass
+        else:
+            c.cancel()
