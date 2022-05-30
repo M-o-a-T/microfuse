@@ -159,6 +159,15 @@ class Unpacker(object):
         self._ext_hook = ext_hook
         self._stream_offset = 0
 
+    def feed(self, buf):
+        # add `buf` to buffer
+        bl = len(buf)
+        bx = self._b_n+bl
+        if bx > self._b_l:
+            raise ValueError("buffer overflow")
+        self._buffer[self._b_n:bx] = buf
+        self._b_n = bx
+
     def read(self):
         # returns #bytes
         if self._b_i == 0:
@@ -171,6 +180,9 @@ class Unpacker(object):
             self._b[:n] = self._b[-n:]
             self._b_n = n
             self._b_i = 0
+
+        if self.reader is None:
+            raise OutOfData("no more")
 
         n = self.reader(self._b[self._b_n:])
         self._b_n += n
