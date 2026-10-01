@@ -14,7 +14,7 @@ from anyio.streams.text import TextReceiveStream
 
 from microfuse.link import Link
 from microfuse.multiplex import Multiplexer
-from microfuse.util import attrdict
+from moat.util import attrdict
 
 click.anyio_backend="trio"
 
