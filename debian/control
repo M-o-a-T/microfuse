@@ -11,6 +11,7 @@ Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends}
 Recommends: systemd,
   python3-pyfuse3,
+  python3-serial,
 Conflicts: microfuse-systemd
 Replaces: microfuse-systemd
 Description: A FUSE plus MQTT plus REPL channel for MicroPython
