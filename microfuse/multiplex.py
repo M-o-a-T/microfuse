@@ -9,7 +9,7 @@ import anyio
 from moat.lib.mqtt.async_client import AsyncMQTTClient
 
 from .link import ServerError
-from moat.util import ValueEvent
+from moat.util import ValueEvent, ungroup
 from moat.lib.codec import get_codec
 
 logger = logging.getLogger(__name__)
@@ -402,7 +402,8 @@ class Multiplexer:
         stream = Stream(self, sock)
         with self._attached(stream):
             try:
-                await stream.run()
+                with ungroup:
+                    await stream.run()
             except anyio.EndOfStream:
                 pass
             except Exception as e:
