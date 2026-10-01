@@ -4,9 +4,8 @@ from contextlib import asynccontextmanager
 import anyio
 from outcome import Error, Value
 
-from microfuse.util import packer, stream_unpacker
-
-from .util import CtxObj, NotGiven
+from moat.util import CtxObj, NotGiven
+from moat.lib.codec import get_codec
 
 logger = logging.getLogger(__name__)
 
@@ -32,8 +31,8 @@ class Link(CtxObj):
 
     def __init__(self, link):
         self.link = link
-        self.packer = packer
-        self.unpacker = stream_unpacker()
+        self.packer = get_codec("msgpack")
+        self.unpacker = get_codec("msgpack")
         self._send_lock = anyio.Lock()
         self.waiting = dict()
 
@@ -95,7 +94,7 @@ class Link(CtxObj):
                 kw['d'] = d
             self.waiting[seq] = evt = anyio.Event()
             try:
-                await self.sock.send(self.packer(kw))
+                await self.sock.send(self.packer.encode(kw))
                 await evt.wait()
                 return self.waiting[seq].unwrap()
             finally:
@@ -128,7 +127,7 @@ class Link(CtxObj):
         logger.debug('Mounting...')
         fuse_options = set(pyfuse3.default_options)  # pylint: disable=I1101
         fuse_options.add('fsname=microfs')
-        fuse_options.add(f'max_read={operations.max_read}')
+#       fuse_options.add(f'max_read={operations.max_read}')
         if debug:
             fuse_options.add('debug')
         pyfuse3.init(operations, str(path), fuse_options)  # pylint: disable=I1101

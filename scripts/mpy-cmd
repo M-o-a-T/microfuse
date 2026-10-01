@@ -6,6 +6,7 @@ import sys
 from contextlib import contextmanager
 from pathlib import Path
 from tempfile import TemporaryDirectory
+import logging
 
 import anyio
 import asyncclick as click
@@ -19,10 +20,12 @@ click.anyio_backend="trio"
 
 
 @click.group()
-@click.option("-v","--verbose","verbose", is_flag=True,help="tell what's happening")
+@click.option("-v","--verbose","verbose", count=True, help="tell what's happening (dup for more)")
 @click.argument("socket", type=click.Path())
 @click.pass_context
 async def main(ctx, socket, verbose):
+    logging.basicConfig(level=logging.DEBUG if verbose>1 else logging.INFO if verbose else logging.WARNING)
+
     try:
         os.stat(socket)
     except FileNotFoundError:
