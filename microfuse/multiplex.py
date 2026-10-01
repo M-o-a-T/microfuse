@@ -9,8 +9,9 @@ import anyio
 from moat.lib.mqtt.async_client import AsyncMQTTClient
 
 from .link import ServerError
-from moat.util import ValueEvent, ungroup
+from moat.util import ValueEvent, srepr, ungroup
 from moat.lib.codec import get_codec
+from moat.lib.path import Path
 
 logger = logging.getLogger(__name__)
 
@@ -427,7 +428,7 @@ class Multiplexer:
         Send a message to the embedded device
         """
         async with self._send_lock:
-            print("M SEND", kw)
+            print("M SEND", srepr(kw), flush=True)
             if self.sock is None:
                 raise EOFError
             await self.sock.send(self.packer.encode(kw))
@@ -452,7 +453,7 @@ class Multiplexer:
             d = await self.sock.receive()
             self.unpacker.feed(d)
             for msg in self.unpacker:
-                print("M RECV", msg)
+                print("M RECV", srepr(msg), flush=True)
                 await self._process(msg)
 
     async def submit(self, serv, msg, seq):
@@ -536,7 +537,9 @@ class Multiplexer:
         else:
             c = None if r else "msgpack"
         if isinstance(p, str):
-            p = p.split("/")
+            p = Path.from_slashed(p)
+        else:
+            p = Path.build(p)
         if w:
             pr = []
             for k in p:
@@ -547,8 +550,8 @@ class Multiplexer:
                     pr.extend(w)
                     break
                 pr.append(k)
-            p = pr
-        await self.mqtt.publish(p, d, codec=c)
+            p = Path.build(pr)
+        await self.mqtt.publish(p.slashed2, d if c is None else self.packer.encode(d))
 
 
     async def cmd_ms(self, d, p, r=False, **_kw):
