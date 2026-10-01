@@ -1,0 +1,33 @@
+[Unit]
+Description=MicroFuse link to the embedded device
+Documentation=https://github.com/M-o-a-T/microfuse
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+# Creates /run/upy (used for the data/REPL sockets) and removes it on stop.
+RuntimeDirectory=upy
+RuntimeDirectoryMode=0755
+
+# Power on the ESP and let it settle before connecting.
+ExecStartPre=/usr/lib/microfuse/gpio-on.sh
+# Run the link. Flags mirror scripts/mpy-setup:
+#   -h host   embedded system          -p port   TCP port
+#   -d path   data socket              -r path   REPL socket
+#   -M addr   MQTT broker              -w secs   keepalive interval
+ExecStart=/usr/bin/mpy-link -h 10.107.3.139 -p 18266 -d /run/upy/bk_data -r /run/upy/bk_repl -M 10.107.15.55 -w 10
+# Power off the ESP and cool down. Runs on every stop, including restarts.
+ExecStopPost=/usr/lib/microfuse/gpio-off.sh
+
+# Reproduce scripts/mpy-setup's unconditional `while :` loop: every exit
+# (failure or clean) cycles ExecStopPost (off + 10s) then ExecStartPre
+# (on + 60s) before relaunching. An explicit `systemctl stop` still wins,
+# so manual stops are honored regardless of Restart=.
+Restart=always
+RestartSec=0
+# ExecStartPre alone sleeps 60s for power settling; give mpy-link room to bind.
+TimeoutStartSec=120
+
+[Install]
+WantedBy=multi-user.target
