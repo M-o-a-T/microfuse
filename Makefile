@@ -12,7 +12,7 @@ include /usr/share/sourcemgr/make/py
 
 else
 %:
-	@echo "Please use 'python setup.py'."
+	@echo "Please use 'python -mbuild'."
 	@exit 1
 endif
 

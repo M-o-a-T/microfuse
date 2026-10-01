@@ -1,0 +1,52 @@
+#!/bin/bash
+
+set -x
+cd /sys/class/gpio
+
+on() {
+	echo 1 >/sys/class/gpio/gpio$b18/value
+}
+off() {
+	echo 0 >/sys/class/gpio/gpio$b18/value
+}
+
+
+export PYTHONPATH=/root/microfuse
+export PATH=/root/microfuse/scripts:$PATH
+mkdir -p /run/upy
+
+# SIGH
+brctl addif br_infra wl0
+
+main() {
+	d=$1
+	b=$(cat $d/base)
+
+	# ESP power
+
+	b18=$(( $b + 18 ))
+	echo $b18 >export 2>/dev/null || true
+	echo out >gpio$b18/direction
+	on
+
+	while : ; do
+		
+		mpy-link -h 10.107.3.139 -p 18266 -d /run/upy/bk_data -r /run/upy/bk_repl -M 10.107.15.55 -w 10 > /run/upy/log 2>&1
+		off
+		sleep 10
+		mv /run/upy/log /run/upy/log.old
+		on
+		sleep 60
+	done
+}
+
+cd /sys/class/gpio
+for d in gpiochip* ; do
+	if test "$(cat $d/label)" = "pinctrl-bcm2835" ; then
+		main $d
+		exit
+	fi
+done
+
+echo "GPIO not found" >&2
+exit 2

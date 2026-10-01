@@ -6,10 +6,11 @@ from concurrent.futures import CancelledError
 from contextlib import asynccontextmanager, contextmanager
 
 import anyio
-from distmqtt.client import open_mqttclient
+from moat.lib.mqtt.async_client import AsyncMQTTClient
 
 from .link import ServerError
-from .util import ValueEvent, packer, stream_unpacker
+from moat.util import ValueEvent
+from moat.lib.codec import get_codec
 
 logger = logging.getLogger(__name__)
 
@@ -126,8 +127,8 @@ class Stream:
     def __init__(self, mplex, sock):
         self.mplex = mplex
         self.sock = sock
-        self.packer = packer
-        self.unpacker = stream_unpacker()
+        self.packer = get_codec("msgpack")
+        self.unpacker = get_codec("msgpack")
         self._send_lock = anyio.Lock()
 
     async def run(self):
@@ -158,7 +159,7 @@ class Stream:
 
     async def send(self, **kw):
         async with self._send_lock:
-            await self.sock.send(self.packer(kw))
+            await self.sock.send(self.packer.encode(kw))
 
     async def aclose(self):
         self._close.set()
@@ -218,8 +219,8 @@ class Multiplexer:
         self.mqtt_sub = {}
         self.watchdog = watchdog
 
-        self.packer = packer
-        self.unpacker = stream_unpacker()
+        self.packer = get_codec("msgpack")
+        self.unpacker = get_codec("msgpack")
 
         self.next_mid = 0
         self.next_stream = 0
@@ -231,7 +232,7 @@ class Multiplexer:
         if self.mqtt_cfg is None:
             yield self
             return
-        async with open_mqttclient(config=dict(uri=self.mqtt_cfg)) as mqtt:
+        async with AsyncMQTTClient(**self.mqtt_cfg) as mqtt:
             try:
                 self.mqtt = mqtt
                 yield self
@@ -428,7 +429,7 @@ class Multiplexer:
             print("M SEND", kw)
             if self.sock is None:
                 raise EOFError
-            await self.sock.send(self.packer(kw))
+            await self.sock.send(self.packer.encode(kw))
 
     async def _conn_init(self, *, task_status):
         with anyio.fail_after(2):

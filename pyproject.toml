@@ -2,16 +2,60 @@
 requires = [
   "setuptools >= 42",
   "setuptools_scm[toml] >= 3.5.0",
-  "setuptools_scm_git_archive >= 1.1",
 ]
 build-backend = "setuptools.build_meta"
 
-[tool.black]
-skip-string-normalization = true
+[project]
+name = "microfuse"
+description = "A FUSE plus MQTT plus REPL channel for MicroPython"
+readme = {file = "README.rst", content-type = "text/x-rst; charset=UTF-8"}
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+requires-python = ">=3.7"
+authors = [
+  {name = "Matthias Urlichs", email = "matthias@urlichs.de"},
+]
+maintainers = [
+  {name = "Matthias Urlichs", email = "matthias@urlichs.de"},
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Environment :: Console",
+  "Intended Audience :: Developers",
+  "Intended Audience :: System Administrators",
+  "Operating System :: OS Independent",
+  "Programming Language :: Python :: 3.7",
+  "Programming Language :: Python :: 3.8",
+  "Programming Language :: Python :: 3.9",
+  "Programming Language :: Python :: Implementation :: MicroPython",
+  "Topic :: Utilities",
+]
+dependencies = [
+  "setuptools>=39.0",
+]
+dynamic = ["version"]
 
-[tool.isort]
-profile = "black"
-# known_first_party = "foo"
+[project.urls]
+Homepage = "https://github.com/M-o-a-T/microfuse"
+Source = "https://github.com/M-o-a-T/microfuse"
+Issues = "https://github.com/M-o-a-T/microfuse/issues"
+
+[tool.setuptools]
+zip-safe = true
+include-package-data = true
+script-files = [
+  "scripts/mpy-cmd",
+  "scripts/mpy-link",
+  "scripts/mpy-term",
+  "scripts/mpy-setup",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["microfuse*"]
+
+[tool.setuptools.package-data]
+"*" = ["embedded"]
 
 [tool.setuptools_scm]
 local_scheme = "no-local-version"

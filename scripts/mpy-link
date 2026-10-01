@@ -17,13 +17,13 @@ logger = logging.getLogger(__name__)
 @click.option("-r","--repl", type=click.Path(), help="REPL socket")
 @click.option("-R","--repl-nr", type=int, default=0, help="Terminal number. Default: zero")
 @click.option("-m","--multiplex", is_flag=True, help="Multiplex the REPL?")
-@click.option("-M","--mqtt", type=str, help="MQTT broker URL")
+@click.option("-M","--mqtt", type=str, help="MQTT broker address")
 @click.option("-t","--retry", type=int, default=0, help="number of reconnection attempts")
 @click.option("-w","--watchdog", type=float, help="Send keepalive every N seconds")
-async def main(**kw):
+async def main(mqtt,**kw):
     if not kw.get("host"):
         raise click.UsageError("Host name is mandatory")
-    mplex = Multiplexer(**kw)
+    mplex = Multiplexer(mqtt={"host_or_path":mqtt},**kw)
     await mplex.run()
     
 

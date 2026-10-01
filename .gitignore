@@ -4,5 +4,8 @@ __pycache__/
 /.pybuild/
 /build/
 
+/debian/
+/dist/
+
 # private
 /install.sh
