@@ -1,3 +1,13 @@
+microfuse (0.4.1-2) unstable; urgency=medium
+
+  * Ship microfuse.service plus the GPIO power-cycling helper scriptlets
+    (gpio-on.sh / gpio-off.sh) from the python3-microfuse package;
+    Recommends: systemd.
+  * Bump debhelper compat to 13 (enables dh_installsystemd in the default
+    sequence) and switch to debhelper-compat in Build-Depends.
+
+ -- Matthias Urlichs <matthias@urlichs.de>  Thu, 01 Oct 2026 15:03:16 +0200
+
 microfuse (0.4.0-1) unstable; urgency=medium
 
   * Merge

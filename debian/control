@@ -2,19 +2,18 @@ Source: microfuse
 Maintainer: Matthias Urlichs <matthias@urlichs.de>
 Section: python
 Priority: optional
-Build-Depends: dh-python, python3-setuptools, python3-all, debhelper (>= 9.20150101)
-Standards-Version: 3.9.6
+Build-Depends: dh-python, python3-setuptools, python3-all, debhelper-compat (= 13)
+Standards-Version: 4.6.2
 Homepage: https://github.com/M-o-a-T/microfuse
 
 Package: python3-microfuse
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends}
-Description: A FUSE plus MQTT plus REPL channelfor MicroPython
- =========
- MicroFUSE
- =========
- .
- This is a file system plus console plus MQTT plus take-your-pick
+Recommends: systemd
+Conflicts: microfuse-systemd
+Replaces: microfuse-systemd
+Description: A FUSE plus MQTT plus REPL channel for MicroPython
+ This is a legacy file system plus console plus MQTT plus take-your-pick
  multiplexer for MicroPython.
  .
  On the embedded device, a small single-client server runs in the
@@ -30,4 +29,8 @@ Description: A FUSE plus MQTT plus REPL channelfor MicroPython
  file system; it's also possible to send file system commands directly.
  .
  A terminal program (based on pyserial-miniterm) is included.
-
+ .
+ This package also ships a microfuse.service systemd unit (plus GPIO
+ power-cycling helper scriptlets under /usr/lib/microfuse/) that runs
+ mpy-link against the embedded device, mirroring the former
+ scripts/mpy-setup supervisor.

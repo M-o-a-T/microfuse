@@ -1,1 +1,7 @@
+usr/bin/mpy-cmd
+usr/bin/mpy-link
+usr/bin/mpy-setup
+usr/bin/mpy-term
+usr/lib/python3*/dist-packages/microfuse
+usr/lib/python3*/dist-packages/microfuse-*.dist-info
 embedded    usr/share/microfuse/

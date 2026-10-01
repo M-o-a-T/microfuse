@@ -5,3 +5,5 @@
 /*.substvars
 /debhelper-build-stamp
 /python3-microfuse
+/microfuse-systemd
+/tmp/
