@@ -9,7 +9,8 @@ Homepage: https://github.com/M-o-a-T/microfuse
 Package: python3-microfuse
 Architecture: all
 Depends: ${misc:Depends}, ${python3:Depends}
-Recommends: systemd
+Recommends: systemd,
+  python3-pyfuse3,
 Conflicts: microfuse-systemd
 Replaces: microfuse-systemd
 Description: A FUSE plus MQTT plus REPL channel for MicroPython
