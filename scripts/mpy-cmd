@@ -16,9 +16,6 @@ from microfuse.link import Link
 from microfuse.multiplex import Multiplexer
 from moat.util import attrdict
 
-click.anyio_backend="trio"
-
-
 @click.group()
 @click.option("-v","--verbose","verbose", count=True, help="tell what's happening (dup for more)")
 @click.argument("socket", type=click.Path())
@@ -62,4 +59,4 @@ async def mount(obj, path, blocksize):
 
 
 if __name__ == "__main__":
-    main()
+    main(_anyio_backend="trio")

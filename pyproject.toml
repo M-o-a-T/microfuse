@@ -32,6 +32,10 @@ classifiers = [
 ]
 dependencies = [
   "setuptools>=39.0",
+  "asyncclick>=8.4",
+  "moat.util",
+  "moat.lib.codec",
+  "moat.lib.path",
 ]
 dynamic = ["version"]
 
